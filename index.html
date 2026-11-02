@@ -94,6 +94,52 @@
         <h3>Teams</h3>
         <div id="team-edit" class="team-edit"></div>
       </div>
+      <div class="card" id="live-card">
+        <h3>Team devices</h3>
+        <div class="live-modes">
+          <label class="check"><input type="radio" name="live-mode" value="off"> <span><b>Projector only</b> — teams answer on paper/whiteboards and you click who got it right</span></label>
+          <label class="check"><input type="radio" name="live-mode" value="firebase"> <span><b>Each team on its own device</b> — teams log in, type answers (checked automatically) and call their own plays</span></label>
+          <label class="check"><input type="radio" name="live-mode" value="local"> <span><b>Practice on this computer</b> — open the team screens in other tabs to try it out (no setup)</span></label>
+        </div>
+
+        <div id="live-fb" class="hidden">
+          <div id="fb-ready" class="hint"></div>
+          <details id="fb-setup">
+            <summary>Set up Firebase (free, about 10 minutes, once)</summary>
+            <ol class="steps">
+              <li>Go to <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a> and sign in with a Google account
+                (if your school account is blocked, use a personal Gmail). Click <b>Create a project</b>, name it e.g. <i>stats-football</i>,
+                turn Google Analytics off, and click <b>Create project</b>.</li>
+              <li>In the left menu choose <b>Build → Realtime Database → Create database</b>. Pick the United States location,
+                choose <b>Start in locked mode</b>, and click <b>Enable</b>. Open the <b>Rules</b> tab, replace everything with the rules below, and click <b>Publish</b>.
+                <pre class="rules-code" id="fb-rules"></pre><button class="ghost small" id="fb-copy-rules">Copy rules</button></li>
+              <li>In the left menu choose <b>Build → Authentication → Get started</b>. On the <b>Sign-in method</b> tab click <b>Anonymous</b>, switch it on and <b>Save</b>.
+                Then on the <b>Settings</b> tab → <b>Authorized domains</b> → <b>Add domain</b> and add <code id="fb-domain"></code>.</li>
+              <li>Click the ⚙ gear next to <b>Project Overview → Project settings</b>. Under <b>Your apps</b> click the <b>&lt;/&gt;</b> (web) button,
+                give it a nickname, click <b>Register app</b>, then copy the whole <code>const firebaseConfig = { … }</code> block and paste it here:</li>
+            </ol>
+          </details>
+          <textarea id="fb-config" rows="4" placeholder="Paste the firebaseConfig block from Firebase here"></textarea>
+        </div>
+
+        <div id="live-room" class="hidden">
+          <div class="row gap wrap">
+            <div><span class="hint">Room code</span><div class="room-code" id="room-code"></div></div>
+            <button class="ghost small" id="room-new">New room code</button>
+            <span class="grow"></span>
+            <span id="live-status" class="live-status"></span>
+          </div>
+          <p class="hint">Give each team its own link (it logs them straight in), or have them open the team page and type the room code and their PIN.
+            Team page: <a id="team-page" target="_blank" rel="noopener"></a></p>
+          <table class="logins" id="logins"></table>
+          <div class="row gap wrap">
+            <button class="ghost small" id="copy-all">Copy all links</button>
+            <button class="ghost small" id="print-slips">Print login slips</button>
+            <button class="ghost small" id="new-pins">New PINs</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <h3>Rules</h3>
         <div class="row gap wrap">
@@ -136,6 +182,7 @@
   <section id="game" class="screen hidden">
     <div class="topbar">
       <div class="title"><span id="g-matchup"></span></div>
+      <div class="join hidden" id="g-join"></div>
       <div class="qcount" id="g-qcount"></div>
       <div class="tools">
         <button id="g-undo" class="ghost small" title="Undo last play">↶ Undo</button>
@@ -163,6 +210,8 @@
 
   <script src="js/questions.js"></script>
   <script src="js/importer.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/live.js"></script>
   <script src="js/plays.js"></script>
   <script src="js/app.js"></script>
 </body>

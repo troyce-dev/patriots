@@ -204,3 +204,20 @@ assert.strictEqual(st.teams.us.passTD, '2');
 assert.strictEqual(st.receivers[0].yds, '96');
 
 console.log('importer tests passed');
+
+// ---------- auto-checking typed answers ----------
+for (const q of Q.generate(Q.SAMPLE)) {
+  assert.strictEqual(Q.autoCheck(q.a, q.a), true, `${q.id} accepts its own answer`);
+  assert.strictEqual(Q.autoCheck(q.a, '99999'), false, `${q.id} rejects nonsense`);
+}
+assert.strictEqual(Q.autoCheck('68.6%', '68.6'), true);
+assert.strictEqual(Q.autoCheck('68.6%', '0.686'), true);
+assert.strictEqual(Q.autoCheck('68.6%', '68.7'), true, 'last-digit rounding allowed');
+assert.strictEqual(Q.autoCheck('68.6%', '69'), false);
+assert.strictEqual(Q.autoCheck('Mean = 53.6, Median = 52', 'mean 53.6 median 52'), true);
+assert.strictEqual(Q.autoCheck('Mean = 53.6, Median = 52', '53.6'), false, 'both parts needed');
+assert.strictEqual(Q.autoCheck('P(3 of 3) = 0.593; P(at least 1 miss) = 0.407', '.593 and .407'), true);
+assert.strictEqual(Q.autoCheck('9 of 52 → 17.3%', '17.3%'), true);
+assert.strictEqual(Q.autoCheck('Tom Brady', 'brady'), null, 'no number: teacher decides');
+assert.strictEqual(Q.autoCheck('1,234 yards', '1234'), true);
+console.log('auto-check tests passed');

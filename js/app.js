@@ -1,4 +1,4 @@
-/* global FBQuestions, FBPlays */
+/* global FBQuestions, FBPlays, FBLive */
 (function () {
   'use strict';
   const Q = FBQuestions;
@@ -27,6 +27,7 @@
   }
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
+    if (typeof livePublish === 'function') livePublish();
   }
 
   // =================== SOUND ===================
@@ -199,6 +200,7 @@
     renderQuestionList();
     renderTeamEdit();
     renderRules();
+    if (state.live) renderLiveCard();
   }
 
   function initSetup() {
@@ -388,6 +390,227 @@
     });
   }
 
+  // =================== TEAM DEVICES (LIVE) ===================
+  const RULES_JSON = JSON.stringify({ rules: { rooms: { $room: { '.read': 'auth != null', '.write': 'auth != null' } } } }, null, 2);
+  const live = { room: null, status: 'off', answers: {}, calls: {}, online: {}, subs: [], subKey: '', lastPub: '', pubTimer: null };
+  state.live = state.live || { mode: 'off', configText: '', code: FBLive.newRoomCode(), pins: state.teams.map(() => FBLive.newPin()) };
+  const L = () => state.live;
+  const liveOn = () => L().mode !== 'off' && !!live.room;
+  const fbConfig = () => window.FB_CONFIG || FBLive.parseConfig(L().configText);
+
+  function teamLink(i) {
+    const u = new URL('team.html', location.href);
+    u.search = '';
+    u.hash = '';
+    u.searchParams.set('room', L().code);
+    u.searchParams.set('team', String(i + 1));
+    u.searchParams.set('pin', L().pins[i]);
+    if (L().mode === 'local') u.searchParams.set('mode', 'local');
+    else if (!window.FB_CONFIG && fbConfig()) u.searchParams.set('c', FBLive.b64.enc(fbConfig()));
+    return u.toString();
+  }
+  const teamPage = () => { const u = new URL('team.html', location.href); u.search = ''; u.hash = ''; return u.toString(); };
+
+  function setLiveStatus(s, msg) {
+    live.status = s;
+    const el = $('#live-status');
+    if (el) {
+      el.className = `live-status ${s}`;
+      el.textContent = msg || { connecting: 'Connecting…', on: '● Connected', err: 'Not connected', off: '' }[s];
+    }
+    renderLiveDots();
+  }
+
+  async function liveConnect() {
+    live.subs.forEach((off) => off()); live.subs = []; live.subKey = ''; live.lastPub = '';
+    live.room = null;
+    if (L().mode === 'off') { setLiveStatus('off'); return; }
+    const cfg = L().mode === 'firebase' ? fbConfig() : null;
+    if (L().mode === 'firebase' && !cfg) { setLiveStatus('err', 'Paste your Firebase settings first'); return; }
+    setLiveStatus('connecting');
+    try {
+      const backend = await FBLive.connect(L().mode, cfg);
+      live.room = backend.room(L().code);
+      live.subs.push(live.room.on('presence', (v) => { live.online = v || {}; renderLiveDots(); }));
+      setLiveStatus('on');
+      livePublish(true);
+    } catch (err) {
+      setLiveStatus('err', `Not connected: ${err.message || err}`);
+    }
+  }
+
+  // What the team devices see. The answer is only sent after it's revealed.
+  function liveSnapshot() {
+    const g = state.game;
+    const info = { teams: state.teams.map((t) => ({ name: t.name, color: t.color, stripe: t.stripe })), pins: L().pins,
+      title: `${state.stats.us || ''}${state.stats.opponent ? ` vs ${state.stats.opponent}` : ''}` };
+    if (!g) return { info, state: { phase: 'lobby' } };
+    const q = g.deck[g.qi];
+    const st = {
+      gameId: g.gameId, phase: g.phase === 'target' ? 'call' : g.phase, qi: g.qi, qcount: g.deck.length,
+      question: q ? { q: q.q, topic: q.topic, level: q.level } : null,
+      answer: q && g.phase !== 'question' ? q.a : null,
+      marks: g.phase !== 'question' ? g.correct : null,
+      queue: g.queue || [], qpos: g.qpos || 0,
+      pos: g.teams.map((t) => t.pos),
+      last: g.last && (g.phase === 'result' || g.phase === 'over') ? g.last : null,
+      winner: g.winner,
+    };
+    return { info, state: st };
+  }
+  function livePublish(now) {
+    if (!liveOn()) return;
+    clearTimeout(live.pubTimer);
+    live.pubTimer = setTimeout(() => {
+      const snap = liveSnapshot();
+      const j = JSON.stringify(snap);
+      if (j !== live.lastPub) {
+        live.lastPub = j;
+        live.room.update('', { info: snap.info, state: snap.state }).catch((e) => setLiveStatus('err', `Not connected: ${e.message || e}`));
+      }
+      liveSubscribe();
+    }, now ? 0 : 40);
+  }
+  // listen for this question's answers and play calls
+  function liveSubscribe() {
+    const g = state.game;
+    const key = g ? `${g.gameId}/${g.qi}` : '';
+    if (!liveOn() || key === live.subKey) return;
+    live.subs.splice(1).forEach((off) => off()); // keep presence
+    live.subKey = key;
+    live.answers = {}; live.calls = {};
+    if (!g) return;
+    live.subs.push(live.room.on(`answers/${key}`, (v) => {
+      live.answers = v || {};
+      if (state.game && (state.game.phase === 'question') && !$('#game').classList.contains('hidden')) renderAnswerCount();
+    }));
+    live.subs.push(live.room.on(`calls/${key}`, (v) => { live.calls = v || {}; checkPendingCall(); }));
+  }
+
+  function renderLiveDots() {
+    $$('.lane').forEach((l) => l.classList.toggle('online', liveOn() && !!live.online[l.dataset.i]));
+    const j = $('#g-join');
+    if (j) {
+      j.classList.toggle('hidden', !liveOn());
+      j.innerHTML = liveOn() ? `Teams join: <b>${esc(teamPage().replace(/^https?:\/\//, ''))}</b> · Room <b>${esc(L().code)}</b>` : '';
+    }
+    $$('#logins tr[data-i]').forEach((tr) => {
+      const on = liveOn() && !!live.online[tr.dataset.i];
+      $('.on', tr).textContent = on ? '● joined' : '';
+    });
+  }
+  function renderAnswerCount() {
+    const el = $('#answers-in');
+    if (!el) return;
+    const g = state.game;
+    el.innerHTML = `Answers in: ${g.teams.map((t, i) => `<span class="chip small ${live.answers[i] ? '' : 'dim'}" style="--c:${esc(t.color)}">${live.answers[i] ? '✔ ' : ''}${esc(t.name)}</span>`).join(' ')}`;
+  }
+
+  // On reveal: copy each team's typed answer into the game and auto-mark it.
+  function liveMarkAnswers() {
+    const g = state.game;
+    const q = g.deck[g.qi];
+    g.typed = g.teams.map((_, i) => {
+      const a = live.answers[i];
+      if (!a) return null;
+      const auto = Q.autoCheck(q.a, a.text);
+      return { text: String(a.text).slice(0, 200), auto };
+    });
+    g.correct = g.typed.map((t) => !!(t && t.auto === true));
+  }
+
+  // When it's a team's turn and they've already called a play on their device, run it.
+  function checkPendingCall() {
+    const g = state.game;
+    if (!liveOn() || !g || g.phase !== 'call' || $('#game').classList.contains('hidden')) return;
+    const ti = g.queue[g.qpos];
+    const c = live.calls[ti];
+    if (!c || !['pass', 'run', 'defense'].includes(c.call)) return;
+    const key = `${g.qi}:${ti}`;
+    g.used = g.used || {};
+    if (g.used[key]) return;
+    g.used[key] = true;
+    if (c.call === 'defense') {
+      const t = Number(c.target);
+      if (!Number.isInteger(t) || t === ti || t < 0 || t >= g.teams.length) { g.phase = 'target'; save(); renderPanel(); return; }
+      setTimeout(() => runPlay('defense', t), 600);
+    } else setTimeout(() => runPlay(c.call, null), 600);
+  }
+
+  function renderLiveCard() {
+    const m = L().mode;
+    $$('input[name=live-mode]').forEach((r) => { r.checked = r.value === m; });
+    $('#live-fb').classList.toggle('hidden', m !== 'firebase');
+    $('#live-room').classList.toggle('hidden', m === 'off' || (m === 'firebase' && !fbConfig()));
+    $('#fb-config').value = L().configText || '';
+    $('#fb-rules').textContent = RULES_JSON;
+    $('#fb-domain').textContent = location.hostname || 'troyce-dev.github.io';
+    const cfg = fbConfig();
+    $('#fb-ready').innerHTML = window.FB_CONFIG ? '✔ Firebase settings are built into this site.'
+      : cfg ? `✔ Firebase project <b>${esc(cfg.projectId)}</b> is set up.` : 'Firebase isn’t set up yet — follow the steps below.';
+    $('#fb-setup').open = !cfg;
+    $('#fb-config').classList.toggle('hidden', !!window.FB_CONFIG);
+    $('#room-code').textContent = L().code;
+    const tp = teamPage();
+    $('#team-page').href = tp + (m === 'local' ? '?mode=local' : '');
+    $('#team-page').textContent = tp.replace(/^https?:\/\//, '');
+    $('#logins').innerHTML = '<tr><th>Team</th><th>PIN</th><th>Login link</th><th></th><th></th></tr>' +
+      state.teams.map((t, i) => `<tr data-i="${i}"><td><span class="chip small" style="--c:${esc(t.color)}">${esc(t.name)}</span></td>
+        <td class="pin">${esc(L().pins[i])}</td>
+        <td class="link"><a href="${esc(teamLink(i))}" target="_blank" rel="noopener">${esc(t.name)} link</a></td>
+        <td><button class="ghost small" data-copy="${i}">Copy link</button></td><td class="on"></td></tr>`).join('');
+    renderLiveDots();
+  }
+
+  const copyText = async (t, btn) => {
+    try { await navigator.clipboard.writeText(t); } catch (e) {
+      const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e2) { /* ignore */ } ta.remove();
+    }
+    if (btn) { const o = btn.textContent; btn.textContent = 'Copied ✔'; setTimeout(() => { btn.textContent = o; }, 1500); }
+  };
+
+  function printSlips() {
+    $('#print-key').innerHTML = `<div class="slips">${state.teams.map((t, i) => `<div class="slip">
+        <h2>${esc(t.name)}</h2>
+        <p>Go to <b>${esc(teamPage().replace(/^https?:\/\//, ''))}</b></p>
+        <p>Room code: <b class="big">${esc(L().code)}</b> &nbsp; Team: <b>${esc(t.name)}</b> &nbsp; PIN: <b class="big">${esc(L().pins[i])}</b></p>
+        <p class="small">or open this link: ${esc(teamLink(i))}</p></div>`).join('')}</div>`;
+    window.print();
+  }
+
+  function initLive() {
+    $$('input[name=live-mode]').forEach((r) => r.addEventListener('change', () => {
+      L().mode = r.value; save(); renderLiveCard(); liveConnect();
+    }));
+    $('#fb-config').addEventListener('input', (e) => {
+      L().configText = e.target.value; save();
+      const ok = !!FBLive.parseConfig(e.target.value);
+      renderLiveCard();
+      if (ok) liveConnect();
+    });
+    $('#fb-copy-rules').addEventListener('click', (e) => copyText(RULES_JSON, e.target));
+    $('#room-new').addEventListener('click', () => {
+      if (!confirm('Make a new room code? Teams will need new links.')) return;
+      L().code = FBLive.newRoomCode(); save(); renderLiveCard(); liveConnect();
+    });
+    $('#new-pins').addEventListener('click', () => {
+      if (!confirm('Make new PINs for every team? Old links will stop working.')) return;
+      L().pins = state.teams.map(() => FBLive.newPin()); save(); renderLiveCard(); livePublish(true);
+    });
+    $('#logins').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-copy]');
+      if (b) copyText(teamLink(Number(b.dataset.copy)), b);
+    });
+    $('#copy-all').addEventListener('click', (e) => copyText(state.teams.map((t, i) => `${t.name}: ${teamLink(i)}`).join('\n'), e.target));
+    $('#print-slips').addEventListener('click', printSlips);
+    // team names/colors are shown on the devices too
+    $('#team-edit').addEventListener('input', () => { renderLiveCard(); livePublish(); });
+    while (L().pins.length < state.teams.length) L().pins.push(FBLive.newPin());
+    renderLiveCard();
+    liveConnect();
+  }
+
   // =================== GAME ===================
   function buildDeck() {
     let qs = allQuestions().filter((q) => !state.disabled[q.id]);
@@ -406,7 +629,7 @@
     state.game = {
       teams: state.teams.map((t) => ({ ...t, pos: state.rules.start })),
       deck, qi: 0, phase: 'question', correct: state.teams.map(() => false), queue: [], qpos: 0,
-      last: null, log: [], winner: null, history: [],
+      last: null, log: [], winner: null, history: [], gameId: `g${Date.now()}`, typed: null, used: {},
     };
     save();
     showGame();
@@ -423,7 +646,10 @@
     buildField();
     renderHelmets(true);
     renderPanel();
+    renderLiveDots();
+    livePublish(true);
     if (state.game.winner != null) showWinner(false);
+    else checkPendingCall();
   }
 
   const EZ = 7; // end zone width, % of field
@@ -511,9 +737,10 @@
     const qBlock = q ? `<div class="qmeta"><span class="lvl">${'★'.repeat(q.level)}</span> ${esc(q.topic)}</div><div class="qtext">${esc(q.q)}</div>` : '';
 
     if (g.phase === 'question') {
-      panel.innerHTML = `<div class="qbox">${qBlock}</div>
+      panel.innerHTML = `<div class="qbox">${qBlock}${liveOn() ? '<div id="answers-in" class="answers-in"></div>' : ''}</div>
         <div class="actions">${state.rules.timer ? '<div id="timer" class="timer"></div>' : ''}
-          <button class="primary big" data-act="reveal">Reveal answer ▶</button></div>`;
+          <button class="primary big" data-act="reveal">${liveOn() ? 'Time’s up — check answers ▶' : 'Reveal answer ▶'}</button></div>`;
+      if (liveOn()) renderAnswerCount();
       if (state.rules.timer) { if (!timerId) startTimer(); else drawTimer(); }
     } else if (g.phase === 'answer') {
       stopTimer();
@@ -521,15 +748,19 @@
           <div class="answer"><b>Answer:</b> ${esc(q.a)}</div>
           ${q.work ? `<div class="work">${esc(q.work)}</div>` : ''}</div>
         <div class="actions col">
-          <div class="who">Who got it right? <small>(keys 1–5)</small></div>
-          <div class="team-toggles">${g.teams.map((t, i) => `<button class="toggle ${g.correct[i] ? 'on' : ''}" data-act="toggle" data-i="${i}" style="--c:${esc(t.color)}">
-            ${g.correct[i] ? '✔ ' : ''}${esc(t.name)}</button>`).join('')}</div>
+          <div class="who">${g.typed ? 'Checked automatically — click a team to change it' : 'Who got it right?'} <small>(keys 1–5)</small></div>
+          <div class="team-toggles ${g.typed ? 'typed' : ''}">${g.teams.map((t, i) => {
+    const ty = g.typed && g.typed[i];
+    return `<button class="toggle ${g.correct[i] ? 'on' : ''}" data-act="toggle" data-i="${i}" style="--c:${esc(t.color)}">
+            ${g.correct[i] ? '✔ ' : g.typed ? '✘ ' : ''}${esc(t.name)}${g.typed ? `<small class="typed-ans">${ty ? esc(ty.text) : '(no answer)'}${ty && ty.auto === null ? ' — you decide' : ''}</small>` : ''}</button>`;
+  }).join('')}</div>
           <button class="primary big" data-act="plays">${g.correct.some(Boolean) ? 'Call the plays ▶' : 'Nobody — next question ▶'}</button>
         </div>`;
     } else if (g.phase === 'call') {
       const ti = g.queue[g.qpos];
       panel.innerHTML = `<div class="callbox">
           <div class="call-title">${teamChip(ti)} call your play!</div>
+          ${liveOn() ? `<div class="hint big-hint">${live.online[ti] ? 'Choose on your device' : 'Team not connected'} — or pick for them here:</div>` : ''}
           <div class="calls">
             <button class="call pass" data-act="call" data-k="pass"><span>PASS</span><small>boom or bust</small></button>
             <button class="call run" data-act="call" data-k="run"><span>RUN</span><small>steady</small></button>
@@ -592,6 +823,7 @@
     const g = state.game;
     g.qi += 1;
     g.correct = g.teams.map(() => false);
+    g.typed = null;
     g.queue = []; g.qpos = 0;
     g.phase = g.qi < g.deck.length ? 'question' : 'done';
     save();
@@ -601,7 +833,7 @@
   function act(a, el) {
     const g = state.game;
     if (!g) return;
-    if (a === 'reveal' && g.phase === 'question') { g.phase = 'answer'; save(); renderPanel(); }
+    if (a === 'reveal' && g.phase === 'question') { if (liveOn()) liveMarkAnswers(); g.phase = 'answer'; save(); renderPanel(); }
     else if (a === 'toggle' && g.phase === 'answer') {
       const i = Number(el.dataset.i); g.correct[i] = !g.correct[i]; save(); renderPanel();
     } else if (a === 'plays' && g.phase === 'answer') {
@@ -611,7 +843,7 @@
       for (let k = 0; k < n; k++) { const i = (g.qi + k) % n; if (g.correct[i]) g.queue.push(i); }
       g.qpos = 0;
       if (!g.queue.length) { nextQuestion(); return; }
-      g.phase = 'call'; save(); renderPanel();
+      g.phase = 'call'; save(); renderPanel(); checkPendingCall();
     } else if (a === 'call' && g.phase === 'call') {
       if (el.dataset.k === 'defense') { g.phase = 'target'; save(); renderPanel(); }
       else runPlay(el.dataset.k, null);
@@ -619,14 +851,17 @@
     else if (a === 'back' && g.phase === 'target') { g.phase = 'call'; renderPanel(); }
     else if (a === 'celebrate' && g.winner != null) showWinner(false);
     else if (a === 'next' && g.phase === 'result' && g.winner == null) {
-      if (g.qpos + 1 < g.queue.length) { g.qpos += 1; g.phase = 'call'; save(); renderPanel(); } else nextQuestion();
+      if (g.qpos + 1 < g.queue.length) { g.qpos += 1; g.phase = 'call'; save(); renderPanel(); checkPendingCall(); } else nextQuestion();
     } else if (a === 'more') showSetup();
     else if (a === 'newgame') newGame();
   }
 
   function runPlay(call, target) {
     const g = state.game;
+    if (!g || (g.phase !== 'call' && g.phase !== 'target')) return;
     const ti = g.queue[g.qpos];
+    g.used = g.used || {};
+    g.used[`${g.qi}:${ti}`] = true;
     const snap = clone({ ...g, history: undefined });
     snap.phase = 'call';
     g.history.push(snap);
@@ -687,6 +922,13 @@
     if (g.phase === 'rolling') return;
     const snap = g.history.pop();
     snap.history = g.history;
+    if (liveOn() && snap.queue && snap.queue[snap.qpos] != null) {
+      // the undone team calls again
+      const ti = snap.queue[snap.qpos];
+      delete live.calls[ti];
+      if (snap.used) delete snap.used[`${snap.qi}:${ti}`];
+      live.room.remove(`calls/${snap.gameId}/${snap.qi}/${ti}`);
+    }
     state.game = snap;
     save();
     $('#overlay').classList.add('hidden');
@@ -764,6 +1006,7 @@
   initSetup();
   initImport();
   initGame();
+  initLive();
   $('#btn-resume').addEventListener('click', () => { syncDeckOnResume(); showGame(); });
   showSetup();
 })();

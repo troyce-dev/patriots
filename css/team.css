@@ -1,0 +1,37 @@
+.team-body { min-height: 100vh; }
+.team-wrap { max-width: 640px; margin: 0 auto; padding: 1rem; }
+.t-card { background: var(--panel); border-radius: 16px; padding: 1.1rem 1.2rem; margin-bottom: 1rem; }
+.t-card h1 { margin: 0 0 .3rem; font-family: var(--display); }
+.t-card label.block { display: flex; margin: .8rem 0; font-size: 1rem; }
+.t-card input, .t-card select, .t-card textarea { font-size: 1.3rem; padding: .5em .6em; width: 100%; }
+#l-room { text-transform: uppercase; letter-spacing: .15em; }
+.wide { width: 100%; }
+.msg { min-height: 1.2em; color: var(--bad); font-weight: 600; }
+.t-head { display: flex; align-items: center; gap: .8rem; margin-bottom: .8rem; }
+.t-helmet { width: 84px; flex: none; }
+.t-who { flex: 1; }
+.t-name { font-family: var(--display); font-size: 1.5rem; line-height: 1.1; }
+.t-yards { color: var(--accent); font-weight: 800; font-size: 1.1rem; }
+.t-meta { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: .85rem; }
+.t-meta .lvl { color: var(--accent); }
+.t-q { font-size: 1.3rem; line-height: 1.35; font-weight: 600; margin: .4rem 0 .9rem; }
+.t-answer-box { display: flex; flex-direction: column; gap: .6rem; }
+.t-sent { background: rgba(46, 204, 113, .12); border: 2px solid var(--good); border-radius: 10px; padding: .6rem .8rem; }
+.t-big { font-family: var(--display); font-size: 2.2rem; text-align: center; margin: .3rem 0; }
+.t-big.good { color: #7dff9e; }
+.t-big.bad { color: #ff7d7d; }
+.t-center { text-align: center; }
+.t-key { color: #cfe8d6; font-size: 1.15rem; margin: .4rem 0; }
+.t-calls { display: grid; gap: .7rem; margin-top: .6rem; }
+.t-calls .call { width: 100%; min-width: 0; font-size: 2rem; }
+.t-targets { display: grid; gap: .6rem; margin-top: .6rem; }
+.t-targets .toggle { font-size: 1.3rem; padding: .6em; display: flex; justify-content: space-between; align-items: center; }
+.t-turn { background: var(--accent); color: #111; font-weight: 800; text-align: center; border-radius: 10px; padding: .4rem; margin-bottom: .4rem; animation: blink 1s infinite; }
+.t-board { background: var(--panel); border-radius: 16px; padding: .8rem 1rem; }
+.t-board h3 { margin: 0 0 .5rem; font-size: .9rem; color: var(--accent); text-transform: uppercase; letter-spacing: .06em; }
+.t-row { display: grid; grid-template-columns: 7.5rem 1fr 3.6rem; align-items: center; gap: .5rem; margin: .35rem 0; font-weight: 700; }
+.t-row .bar { height: 12px; background: #0a1622; border-radius: 6px; overflow: hidden; }
+.t-row .bar i { display: block; height: 100%; background: var(--c); }
+.t-row .yd { text-align: right; color: var(--muted); font-size: .9rem; }
+.t-row.me { color: var(--accent); }
+.t-row span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

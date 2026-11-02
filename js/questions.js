@@ -295,5 +295,34 @@
     });
   }
 
-  return { SAMPLE, STAT_ROWS, generate, parseCustom, passerRating, mean, median, sampleSD, popSD, minutes };
+  // ---------- auto-checking typed answers ----------
+  // Expected numbers come from the answer text ("Mean = 53.6, Median = 52", "(0.532, 0.840)", "68.6%").
+  // Labels like P(3 of 3) are ignored, and for "9 of 52 → 17.3%" only the part after the arrow counts.
+  const NUM = /-?\d*\.?\d+%?/g;
+  function expectedValues(answer) {
+    let t = String(answer || '');
+    const arrow = t.lastIndexOf('→');
+    if (arrow >= 0) t = t.slice(arrow + 1);
+    t = t.replace(/P\([^)]*\)/g, ' ').replace(/(\d),(\d{3})\b/g, '$1$2');
+    return (t.match(NUM) || []).map((tok) => {
+      const pct = tok.endsWith('%');
+      const n = tok.replace('%', '');
+      const dot = n.indexOf('.');
+      return { v: Math.abs(parseFloat(n)), d: dot < 0 ? 0 : n.length - dot - 1, pct };
+    }).filter((e) => Number.isFinite(e.v));
+  }
+  // true = every expected number is in the student's answer (within rounding), false = not, null = can't tell
+  function autoCheck(answerKey, studentText) {
+    const exp = expectedValues(answerKey);
+    if (!exp.length) return null;
+    const got = (String(studentText || '').replace(/(\d),(\d{3})\b/g, '$1$2').match(/-?\d*\.?\d+/g) || [])
+      .map((x) => Math.abs(parseFloat(x))).filter(Number.isFinite);
+    if (!got.length) return false;
+    return exp.every((e) => {
+      const tol = e.d === 0 ? 1e-9 : 1.01 * 10 ** -e.d;
+      return got.some((g) => Math.abs(g - e.v) <= tol || (e.pct && Math.abs(g * 100 - e.v) <= tol));
+    });
+  }
+
+  return { SAMPLE, STAT_ROWS, generate, parseCustom, autoCheck, expectedValues, passerRating, mean, median, sampleSD, popSD, minutes };
 });

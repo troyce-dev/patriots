@@ -40,12 +40,47 @@ Deploy from a branch → `main`, `/ (root)`). It also works straight from the fi
 ## Running the game
 
 - Show the question → **Reveal answer** → click (or press 1–5) the teams that got it right → **Call the plays**.
-- Each correct team (the starting team rotates each question) picks **Pass** (boom or bust, about +8.5 yds on average),
-  **Run** (steady, about +5.5) or **Defense** (choose another team and push them back about 5.6 yds;
+- Each correct team (the starting team rotates each question) picks **Pass** (boom or bust, about +7.7 yds on average),
+  **Run** (steady, about +5.7) or **Defense** (choose another team and push them back about 5.7 yds;
   pushing a team into its own end zone is a safety and sends it back to the 5).
 - Keys: Space/Enter = main button, P/R/D = play call, Ctrl+Z = undo.
 - **Undo** takes back the last play. Click a helmet to move it by hand.
 - The game saves in the browser, so a refresh or going to Setup and back keeps your place.
+
+## Team devices (each team logs in on its own Chromebook/phone)
+
+On **Setup → Teams & rules → Team devices**, choose one of these:
+
+- **Projector only**: the original game. Teams answer on paper and you click who got it right.
+- **Each team on its own device**: needs a free Firebase project (one-time setup, steps are on that screen).
+  Each team gets its own login: a link that logs them straight in, or the team page
+  (`https://troyce-dev.github.io/patriots/team.html`) plus the room code and the team's 4-digit PIN.
+  Use **Copy link** / **Copy all links** to post them in Google Classroom, or **Print login slips**.
+- **Practice on this computer**: no setup. Open the team links in other tabs of the same browser to try it out.
+
+During the game:
+
+1. Teams see the question on their device and type an answer. The projector shows which teams have answered (not the answers).
+2. Click **Time's up — check answers**. Each answer is checked automatically against the answer key; rounding
+   in the last digit is allowed, and 0.686 counts for 68.6%. Every team's answer shows on the projector with ✔/✘.
+   Click a team to change its mark (custom questions without a number in the answer are yours to judge).
+3. Click **Call the plays**. Teams that got it right pick **Pass / Run / Defense** (and a target for Defense)
+   on their own device. When it's their turn the play runs on the projector by itself. You can still pick for a team
+   that isn't connected. **Undo** lets that team pick again.
+
+The firewall must allow `gstatic.com` and `firebaseio.com` (Google services) on student devices.
+
+### Firebase setup (once)
+
+1. <https://console.firebase.google.com>: **Create a project** (Analytics off).
+2. **Build → Realtime Database → Create database** (United States, *locked mode*). On the **Rules** tab, paste:
+   ```json
+   { "rules": { "rooms": { "$room": { ".read": "auth != null", ".write": "auth != null" } } } }
+   ```
+   and click **Publish**.
+3. **Build → Authentication → Get started → Sign-in method → Anonymous → Enable**. Then **Settings → Authorized domains → Add domain**: `troyce-dev.github.io`.
+4. **Project settings → Your apps → </> (Web) → Register app**. Copy the `firebaseConfig` block and paste it into
+   the box on Setup → Teams & rules. To make the team links short, paste it into `js/firebase-config.js` instead.
 
 ```sh
 node tests/football.test.js   # question math + play engine tests
