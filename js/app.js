@@ -544,7 +544,6 @@
     $('#live-room').classList.toggle('hidden', m === 'off' || (m === 'firebase' && !fbConfig()));
     $('#fb-config').value = L().configText || '';
     $('#fb-rules').textContent = RULES_JSON;
-    $('#fb-domain').textContent = location.hostname || 'troyce-dev.github.io';
     const cfg = fbConfig();
     $('#fb-ready').innerHTML = window.FB_CONFIG ? '✔ Firebase settings are built into this site.'
       : cfg ? `✔ Firebase project <b>${esc(cfg.projectId)}</b> is set up.` : 'Firebase isn’t set up yet — follow the steps below.';
