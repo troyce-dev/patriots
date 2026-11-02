@@ -52,7 +52,7 @@ Deploy from a branch → `main`, `/ (root)`). It also works straight from the fi
 On **Setup → Teams & rules → Team devices**, choose one of these:
 
 - **Projector only**: the original game. Teams answer on paper and you click who got it right.
-- **Each team on its own device**: needs a free Firebase project (one-time setup, steps are on that screen).
+- **Each team on its own device**: uses the `patriots-stats` Firebase project, which is already built into the site (setup steps are below in case it ever needs redoing).
   Each team gets its own login: a link that logs them straight in, or the team page
   (`https://troyce-dev.github.io/patriots/team.html`) plus the room code and the team's 4-digit PIN.
   Use **Copy link** / **Copy all links** to post them in Google Classroom, or **Print login slips**.
@@ -73,14 +73,14 @@ The firewall must allow `gstatic.com` and `firebaseio.com` (Google services) on 
 ### Firebase setup (once)
 
 1. <https://console.firebase.google.com>: **Create a project** (Analytics off).
-2. **Build → Realtime Database → Create database** (United States, *locked mode*). On the **Rules** tab, paste:
+2. **Databases & Storage → Realtime Database → Create database** (United States, *locked mode*). On the **Rules** tab, paste:
    ```json
    { "rules": { "rooms": { "$room": { ".read": "auth != null", ".write": "auth != null" } } } }
    ```
    and click **Publish**.
-3. **Build → Authentication → Get started → Sign-in method → Anonymous → Enable**. Then **Settings → Authorized domains → Add domain**: `troyce-dev.github.io`.
-4. **Project settings → Your apps → </> (Web) → Register app**. Copy the `firebaseConfig` block and paste it into
-   the box on Setup → Teams & rules. To make the team links short, paste it into `js/firebase-config.js` instead.
+3. **Security → Authentication → Get started → Sign-in method → Anonymous → Enable**.
+4. **Project Overview → + Add app → </> (Web) → Register app**. Copy the `firebaseConfig` block into `js/firebase-config.js`
+   (this site already has the `patriots-stats` project there) or paste it into the box on Setup → Teams & rules.
 
 ```sh
 node tests/football.test.js   # question math + play engine tests

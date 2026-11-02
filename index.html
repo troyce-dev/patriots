@@ -110,12 +110,11 @@
               <li>Go to <a href="https://console.firebase.google.com" target="_blank" rel="noopener">console.firebase.google.com</a> and sign in with a Google account
                 (if your school account is blocked, use a personal Gmail). Click <b>Create a project</b>, name it e.g. <i>stats-football</i>,
                 turn Google Analytics off, and click <b>Create project</b>.</li>
-              <li>In the left menu choose <b>Build → Realtime Database → Create database</b>. Pick the United States location,
+              <li>In the left menu open <b>Databases &amp; Storage → Realtime Database</b> (or type “Realtime Database” in <b>Search for products</b>) and click <b>Create database</b>. Pick the United States location,
                 choose <b>Start in locked mode</b>, and click <b>Enable</b>. Open the <b>Rules</b> tab, replace everything with the rules below, and click <b>Publish</b>.
                 <pre class="rules-code" id="fb-rules"></pre><button class="ghost small" id="fb-copy-rules">Copy rules</button></li>
-              <li>In the left menu choose <b>Build → Authentication → Get started</b>. On the <b>Sign-in method</b> tab click <b>Anonymous</b>, switch it on and <b>Save</b>.
-                Then on the <b>Settings</b> tab → <b>Authorized domains</b> → <b>Add domain</b> and add <code id="fb-domain"></code>.</li>
-              <li>Click the ⚙ gear next to <b>Project Overview → Project settings</b>. Under <b>Your apps</b> click the <b>&lt;/&gt;</b> (web) button,
+              <li>In the left menu open <b>Security → Authentication → Get started</b>. On the <b>Sign-in method</b> tab click <b>Anonymous</b>, switch it on and <b>Save</b>.</li>
+              <li>Go to <b>Project Overview</b>, click <b>+ Add app</b> and choose the <b>&lt;/&gt;</b> (Web) icon,
                 give it a nickname, click <b>Register app</b>, then copy the whole <code>const firebaseConfig = { … }</code> block and paste it here:</li>
             </ol>
           </details>
