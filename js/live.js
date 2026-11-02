@@ -44,6 +44,11 @@
             r.on('value', h);
             return () => r.off('value', h);
           },
+          // atomic read-modify-write: fn(current) returns the new value, or undefined to leave it alone
+          async transaction(p, fn) {
+            const r = await ref(p).transaction((cur) => { const v = fn(cur); return v === undefined ? undefined : clone(v); });
+            return { committed: r.committed, value: r.snapshot.val() };
+          },
           // value that disappears by itself when this device disconnects
           async presence(p, v) { const r = ref(p); await r.onDisconnect().remove(); await r.set(clone(v)); },
           onConnection(cb) {
@@ -109,6 +114,17 @@
             setTimeout(l, 0);
             return () => listeners.delete(l);
           },
+          async transaction(p, fn) {
+            let committed = false;
+            await write(code, p, (n, k, tree) => {
+              const cur = clone(n ? n[k] : tree);
+              const v = fn(cur);
+              if (v === undefined) return;
+              committed = true;
+              if (n) { if (v == null) delete n[k]; else n[k] = clone(v); } else { Object.keys(tree).forEach((x) => delete tree[x]); Object.assign(tree, clone(v) || {}); }
+            });
+            return { committed, value: clone(at(read(code), p)) };
+          },
           async presence(p, v) {
             await this.set(p, v);
             window.addEventListener('pagehide', () => write(code, p, (n, k) => { if (n) delete n[k]; }));
@@ -144,7 +160,27 @@
 
   const randomCode = (n, chars) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   const newRoomCode = () => randomCode(5, 'ABCDEFGHJKLMNPQRSTUVWXYZ');
-  const newPin = () => randomCode(4, '0123456789');
+  const newDeviceId = () => randomCode(12, 'abcdefghijkmnpqrstuvwxyz23456789');
 
-  root.FBLive = { connect, parseConfig, b64, newRoomCode, newPin, get backend() { return current; } };
+  // Seats: { "0": {device, at}, "1": ... }. Keeps this device's seat, or takes the lowest open one.
+  function pickSeat(seats, deviceId, n) {
+    const cur = seats && typeof seats === 'object' ? { ...seats } : {};
+    for (let i = 0; i < n; i++) if (cur[i] && cur[i].device === deviceId) return { seats: cur, index: i, changed: false };
+    for (let i = 0; i < n; i++) {
+      if (!cur[i]) { cur[i] = { device: deviceId, at: Date.now() }; return { seats: cur, index: i, changed: true }; }
+    }
+    return { seats: cur, index: -1, changed: false };
+  }
+  async function claimSeat(room, deviceId, n) {
+    const r = await room.transaction('seats', (seats) => {
+      const pick = pickSeat(seats, deviceId, n);
+      return pick.changed ? pick.seats : undefined;
+    });
+    // committed or not, read back where this device sits (-1 = every team is taken)
+    const seats = r.value || await room.get('seats') || {};
+    for (let i = 0; i < n; i++) if (seats[i] && seats[i].device === deviceId) return i;
+    return -1;
+  }
+
+  root.FBLive = { connect, parseConfig, b64, newRoomCode, newDeviceId, pickSeat, claimSeat, get backend() { return current; } };
 })(typeof self !== 'undefined' ? self : this);

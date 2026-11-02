@@ -98,8 +98,8 @@
         <h3>Team devices</h3>
         <div class="live-modes">
           <label class="check"><input type="radio" name="live-mode" value="off"> <span><b>Projector only</b> — teams answer on paper/whiteboards and you click who got it right</span></label>
-          <label class="check"><input type="radio" name="live-mode" value="firebase"> <span><b>Each team on its own device</b> — teams log in, type answers (checked automatically) and call their own plays</span></label>
-          <label class="check"><input type="radio" name="live-mode" value="local"> <span><b>Practice on this computer</b> — open the team screens in other tabs to try it out (no setup)</span></label>
+          <label class="check"><input type="radio" name="live-mode" value="firebase"> <span><b>Each team on its own device</b> — teams join with one link, type answers (checked automatically) and call their own plays</span></label>
+          <label class="check"><input type="radio" name="live-mode" value="local"> <span><b>Practice on this computer</b> — open the join link in other tabs to try it out (no setup)</span></label>
         </div>
 
         <div id="live-fb" class="hidden">
@@ -128,13 +128,16 @@
             <span class="grow"></span>
             <span id="live-status" class="live-status"></span>
           </div>
-          <p class="hint">Give each team its own link (it logs them straight in), or have them open the team page and type the room code and their PIN.
-            Team page: <a id="team-page" target="_blank" rel="noopener"></a></p>
+          <p class="hint">Send every team the same join link (post it in Google Classroom), or have them open the team page and type the room code.
+            The first device to join is Team 1, the next is Team 2, and so on. A device that refreshes keeps its team.</p>
+          <div class="join-box">
+            <a id="join-link" target="_blank" rel="noopener"></a>
+            <button class="ghost small" id="copy-join">Copy join link</button>
+          </div>
+          <p class="hint">Team page: <a id="team-page" target="_blank" rel="noopener"></a></p>
           <table class="logins" id="logins"></table>
           <div class="row gap wrap">
-            <button class="ghost small" id="copy-all">Copy all links</button>
-            <button class="ghost small" id="print-slips">Print login slips</button>
-            <button class="ghost small" id="new-pins">New PINs</button>
+            <button class="ghost small" id="reset-seats">Reset teams (everyone joins again)</button>
           </div>
         </div>
       </div>

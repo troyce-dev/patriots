@@ -392,19 +392,17 @@
 
   // =================== TEAM DEVICES (LIVE) ===================
   const RULES_JSON = JSON.stringify({ rules: { rooms: { $room: { '.read': 'auth != null', '.write': 'auth != null' } } } }, null, 2);
-  const live = { room: null, status: 'off', answers: {}, calls: {}, online: {}, subs: [], subKey: '', lastPub: '', pubTimer: null };
-  state.live = state.live || { mode: 'off', configText: '', code: FBLive.newRoomCode(), pins: state.teams.map(() => FBLive.newPin()) };
+  const live = { room: null, status: 'off', answers: {}, calls: {}, online: {}, seats: {}, subs: [], subKey: '', lastPub: '', pubTimer: null };
+  state.live = state.live || { mode: 'off', configText: '', code: FBLive.newRoomCode() };
   const L = () => state.live;
   const liveOn = () => L().mode !== 'off' && !!live.room;
   const fbConfig = () => window.FB_CONFIG || FBLive.parseConfig(L().configText);
 
-  function teamLink(i) {
+  function joinLink() {
     const u = new URL('team.html', location.href);
     u.search = '';
     u.hash = '';
     u.searchParams.set('room', L().code);
-    u.searchParams.set('team', String(i + 1));
-    u.searchParams.set('pin', L().pins[i]);
     if (L().mode === 'local') u.searchParams.set('mode', 'local');
     else if (!window.FB_CONFIG && fbConfig()) u.searchParams.set('c', FBLive.b64.enc(fbConfig()));
     return u.toString();
@@ -432,6 +430,7 @@
       const backend = await FBLive.connect(L().mode, cfg);
       live.room = backend.room(L().code);
       live.subs.push(live.room.on('presence', (v) => { live.online = v || {}; renderLiveDots(); }));
+      live.subs.push(live.room.on('seats', (v) => { live.seats = v || {}; renderLiveDots(); }));
       setLiveStatus('on');
       livePublish(true);
     } catch (err) {
@@ -442,7 +441,7 @@
   // What the team devices see. The answer is only sent after it's revealed.
   function liveSnapshot() {
     const g = state.game;
-    const info = { teams: state.teams.map((t) => ({ name: t.name, color: t.color, stripe: t.stripe })), pins: L().pins,
+    const info = { teams: state.teams.map((t) => ({ name: t.name, color: t.color, stripe: t.stripe })),
       title: `${state.stats.us || ''}${state.stats.opponent ? ` vs ${state.stats.opponent}` : ''}` };
     if (!g) return { info, state: { phase: 'lobby' } };
     const q = g.deck[g.qi];
@@ -476,7 +475,7 @@
     const g = state.game;
     const key = g ? `${g.gameId}/${g.qi}` : '';
     if (!liveOn() || key === live.subKey) return;
-    live.subs.splice(1).forEach((off) => off()); // keep presence
+    live.subs.splice(2).forEach((off) => off()); // keep presence + seats
     live.subKey = key;
     live.answers = {}; live.calls = {};
     if (!g) return;
@@ -495,8 +494,12 @@
       j.innerHTML = liveOn() ? `Teams join: <b>${esc(teamPage().replace(/^https?:\/\//, ''))}</b> · Room <b>${esc(L().code)}</b>` : '';
     }
     $$('#logins tr[data-i]').forEach((tr) => {
-      const on = liveOn() && !!live.online[tr.dataset.i];
-      $('.on', tr).textContent = on ? '● joined' : '';
+      const i = tr.dataset.i;
+      const taken = liveOn() && !!live.seats[i];
+      const on = liveOn() && !!live.online[i];
+      $('.on', tr).textContent = !taken ? 'Open — waiting for a device' : on ? '● Joined' : 'Taken (device offline)';
+      $('.on', tr).className = `on ${!taken ? 'open' : on ? '' : 'away'}`;
+      $('[data-free]', tr).classList.toggle('hidden', !taken);
     });
   }
   function renderAnswerCount() {
@@ -553,11 +556,11 @@
     const tp = teamPage();
     $('#team-page').href = tp + (m === 'local' ? '?mode=local' : '');
     $('#team-page').textContent = tp.replace(/^https?:\/\//, '');
-    $('#logins').innerHTML = '<tr><th>Team</th><th>PIN</th><th>Login link</th><th></th><th></th></tr>' +
+    $('#join-link').href = joinLink();
+    $('#join-link').textContent = joinLink().replace(/^https?:\/\//, '');
+    $('#logins').innerHTML = '<tr><th>Team</th><th>Device</th><th></th></tr>' +
       state.teams.map((t, i) => `<tr data-i="${i}"><td><span class="chip small" style="--c:${esc(t.color)}">${esc(t.name)}</span></td>
-        <td class="pin">${esc(L().pins[i])}</td>
-        <td class="link"><a href="${esc(teamLink(i))}" target="_blank" rel="noopener">${esc(t.name)} link</a></td>
-        <td><button class="ghost small" data-copy="${i}">Copy link</button></td><td class="on"></td></tr>`).join('');
+        <td class="on"></td><td><button class="ghost small hidden" data-free="${i}">Free this team</button></td></tr>`).join('');
     renderLiveDots();
   }
 
@@ -568,15 +571,6 @@
     }
     if (btn) { const o = btn.textContent; btn.textContent = 'Copied ✔'; setTimeout(() => { btn.textContent = o; }, 1500); }
   };
-
-  function printSlips() {
-    $('#print-key').innerHTML = `<div class="slips">${state.teams.map((t, i) => `<div class="slip">
-        <h2>${esc(t.name)}</h2>
-        <p>Go to <b>${esc(teamPage().replace(/^https?:\/\//, ''))}</b></p>
-        <p>Room code: <b class="big">${esc(L().code)}</b> &nbsp; Team: <b>${esc(t.name)}</b> &nbsp; PIN: <b class="big">${esc(L().pins[i])}</b></p>
-        <p class="small">or open this link: ${esc(teamLink(i))}</p></div>`).join('')}</div>`;
-    window.print();
-  }
 
   function initLive() {
     $$('input[name=live-mode]').forEach((r) => r.addEventListener('change', () => {
@@ -590,22 +584,25 @@
     });
     $('#fb-copy-rules').addEventListener('click', (e) => copyText(RULES_JSON, e.target));
     $('#room-new').addEventListener('click', () => {
-      if (!confirm('Make a new room code? Teams will need new links.')) return;
+      if (!confirm('Make a new room code? Teams will need the new join link.')) return;
       L().code = FBLive.newRoomCode(); save(); renderLiveCard(); liveConnect();
     });
-    $('#new-pins').addEventListener('click', () => {
-      if (!confirm('Make new PINs for every team? Old links will stop working.')) return;
-      L().pins = state.teams.map(() => FBLive.newPin()); save(); renderLiveCard(); livePublish(true);
-    });
+    $('#copy-join').addEventListener('click', (e) => copyText(joinLink(), e.target));
     $('#logins').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-copy]');
-      if (b) copyText(teamLink(Number(b.dataset.copy)), b);
+      const b = e.target.closest('[data-free]');
+      if (!b || !liveOn()) return;
+      const i = Number(b.dataset.free);
+      if (!confirm(`Free ${state.teams[i].name}? That device is sent back to the join screen, and the next device to join takes this team.`)) return;
+      live.room.remove(`seats/${i}`);
+      live.room.remove(`presence/${i}`);
     });
-    $('#copy-all').addEventListener('click', (e) => copyText(state.teams.map((t, i) => `${t.name}: ${teamLink(i)}`).join('\n'), e.target));
-    $('#print-slips').addEventListener('click', printSlips);
+    $('#reset-seats').addEventListener('click', () => {
+      if (!liveOn() || !confirm('Reset all teams? Every device goes back to the join screen and teams are given out again in the order devices join.')) return;
+      live.room.remove('seats');
+      live.room.remove('presence');
+    });
     // team names/colors are shown on the devices too
     $('#team-edit').addEventListener('input', () => { renderLiveCard(); livePublish(); });
-    while (L().pins.length < state.teams.length) L().pins.push(FBLive.newPin());
     renderLiveCard();
     liveConnect();
   }

@@ -221,3 +221,20 @@ assert.strictEqual(Q.autoCheck('9 of 52 → 17.3%', '17.3%'), true);
 assert.strictEqual(Q.autoCheck('Tom Brady', 'brady'), null, 'no number: teacher decides');
 assert.strictEqual(Q.autoCheck('1,234 yards', '1234'), true);
 console.log('auto-check tests passed');
+
+// ---------- team assignment (first to join = Team 1, ...) ----------
+global.self = global; global.window = global;
+require('../js/live.js');
+const pick = global.FBLive.pickSeat;
+let seats = {};
+const take = (dev) => { const r = pick(seats, dev, 5); seats = r.seats; return r.index; };
+assert.deepStrictEqual(['a', 'b', 'c'].map(take), [0, 1, 2]);
+assert.strictEqual(take('b'), 1, 'same device keeps its team');
+delete seats[1];
+assert.strictEqual(take('d'), 1, 'freed team goes to the next device');
+['e', 'f'].forEach(take);
+assert.strictEqual(take('g'), -1, 'room full');
+// Firebase may return numbered children as an array with gaps
+assert.strictEqual(pick([{ device: 'a' }, null, { device: 'c' }], 'z', 5).index, 1);
+assert.strictEqual(pick([{ device: 'a' }, null, { device: 'c' }], 'c', 5).index, 2);
+console.log('team assignment tests passed');

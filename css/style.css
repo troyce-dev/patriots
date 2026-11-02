@@ -266,3 +266,7 @@ details summary { cursor: pointer; color: var(--accent); font-weight: 700; margi
   .slip .big { font-size: 1.4em; letter-spacing: .1em; }
   .slip .small { font-size: 9px; word-break: break-all; }
 }
+.join-box { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; background: #0a1622; border: 2px solid var(--accent); border-radius: 10px; padding: .6rem .9rem; margin: .4rem 0 .6rem; }
+.join-box a { color: var(--accent); font-weight: 800; font-size: 1.15rem; word-break: break-all; }
+.logins td.on.open { color: var(--muted); font-weight: 400; }
+.logins td.on.away { color: var(--accent); }

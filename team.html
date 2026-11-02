@@ -11,10 +11,8 @@
   <main class="team-wrap">
     <section id="login" class="t-card hidden">
       <h1>🏈 Stats Football</h1>
-      <p class="hint">Log in with the room code on the projector and your team's PIN.</p>
+      <p class="hint">Type the room code shown on the projector. You'll be put on the next open team.</p>
       <label class="block">Room code <input id="l-room" type="text" autocomplete="off" autocapitalize="characters" maxlength="8"></label>
-      <label class="block">Team <select id="l-team"><option value="">Type the room code first</option></select></label>
-      <label class="block">Team PIN <input id="l-pin" type="text" inputmode="numeric" autocomplete="off" maxlength="6"></label>
       <button id="l-go" class="primary big wide">Join game ▶</button>
       <p id="l-msg" class="msg"></p>
     </section>
@@ -23,7 +21,7 @@
       <header class="t-head">
         <div class="t-helmet" id="t-helmet"></div>
         <div class="t-who"><div class="t-name" id="t-name"></div><div class="t-yards" id="t-yards"></div></div>
-        <button id="t-logout" class="ghost small">Log out</button>
+        <button id="t-logout" class="ghost small">Leave team</button>
       </header>
       <div id="t-main" class="t-card"></div>
       <div id="t-board" class="t-board"></div>
