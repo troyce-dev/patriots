@@ -53,10 +53,11 @@ On **Setup → Teams & rules → Team devices**, choose one of these:
 
 - **Projector only**: the original game. Teams answer on paper and you click who got it right.
 - **Each team on its own device**: uses the `patriots-stats` Firebase project, which is already built into the site (setup steps are below in case it ever needs redoing).
-  Each team gets its own login: a link that logs them straight in, or the team page
-  (`https://troyce-dev.github.io/patriots/team.html`) plus the room code and the team's 4-digit PIN.
-  Use **Copy link** / **Copy all links** to post them in Google Classroom, or **Print login slips**.
-- **Practice on this computer**: no setup. Open the team links in other tabs of the same browser to try it out.
+  Send every team the same **join link** (Copy join link, then post it in Google Classroom), or have them open
+  `https://troyce-dev.github.io/patriots/team.html` and type the room code. Teams are given out in join order: the first device
+  is Team 1, the next is Team 2, and so on. A device that refreshes keeps its team. Use **Free this team** to hand a team
+  to a different device, or **Reset teams** to have everyone join again.
+- **Practice on this computer**: no setup. Open the join link in a few other tabs of the same browser to try it out.
 
 During the game:
 

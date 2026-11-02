@@ -1,5 +1,5 @@
 /* global FBLive */
-// Team device: log in with room code + team PIN, type answers, call plays.
+// Team device: join with the room code (first device = Team 1, next = Team 2, ...), type answers, call plays.
 (function () {
   'use strict';
   const $ = (s, el = document) => el.querySelector(s);
@@ -51,47 +51,59 @@
   function fatal(html) { $('#fatal').innerHTML = html; show('fatal'); }
 
   // ---------------- login ----------------
-  let roomInfoOff = null;
-  function watchRoomForLogin(code) {
-    if (roomInfoOff) roomInfoOff();
-    const sel = $('#l-team');
-    if (code.length < 5) { sel.innerHTML = '<option value="">Type the room code first</option>'; return; }
-    const r = backend.room(code);
-    roomInfoOff = r.on('info', (v) => {
-      if (!v || !v.teams) { sel.innerHTML = '<option value="">No game with that room code yet</option>'; return; }
-      const cur = sel.value;
-      sel.innerHTML = '<option value="">Choose your team</option>' + v.teams.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
-      sel.value = cur;
-    });
-  }
-  async function tryLogin(code, teamIdx, pin, quiet) {
+  // Each device gets a random id; it keeps the same team after a refresh.
+  const DEVICE = 'statsFootball.team.device';
+  let deviceId = loginStore.get(DEVICE);
+  if (!deviceId) { deviceId = FBLive.newDeviceId(); loginStore.set(DEVICE, deviceId); }
+
+  let joining = false;
+  async function join(code, quiet) {
     const msg = $('#l-msg');
     msg.textContent = '';
-    if (!code || !Number.isInteger(teamIdx) || teamIdx < 0) { msg.textContent = 'Enter the room code and choose your team.'; show('login'); return; }
-    const r = backend.room(code);
-    let v;
-    try { v = await r.get('info'); } catch (e) { msg.textContent = `Couldn't reach the game: ${e.message || e}`; show('login'); return; }
-    if (!v || !v.teams) { msg.textContent = 'No game with that room code. Check the code on the projector.'; show('login'); return; }
-    if (!v.teams[teamIdx]) { msg.textContent = 'Choose your team.'; show('login'); return; }
-    if (String((v.pins || [])[teamIdx]) !== String(pin).trim()) {
-      msg.textContent = quiet ? 'Your saved login has changed — enter your team PIN.' : 'That PIN doesn’t match this team.';
-      $('#l-room').value = code; watchRoomForLogin(code);
-      show('login'); return;
+    code = String(code || '').trim().toUpperCase();
+    if (code.length < 4) { msg.textContent = 'Type the room code from the projector.'; show('login'); return; }
+    if (joining) return;
+    joining = true;
+    $('#l-go').disabled = true;
+    try {
+      const r = backend.room(code);
+      const v = await r.get('info');
+      if (!v || !v.teams) {
+        msg.textContent = quiet ? '' : 'No game with that room code. Check the code on the projector.';
+        $('#l-room').value = code; show('login'); return;
+      }
+      const seat = await FBLive.claimSeat(r, deviceId, v.teams.length);
+      if (seat < 0) { msg.textContent = `All ${v.teams.length} teams are taken. Ask your teacher to free one up.`; $('#l-room').value = code; show('login'); return; }
+      loginStore.set(LOGIN, { room: code, mode });
+      startPlaying(r, seat);
+    } catch (e) {
+      msg.textContent = `Couldn't reach the game: ${e.message || e}`; show('login');
+    } finally {
+      joining = false;
+      $('#l-go').disabled = false;
     }
-    loginStore.set(LOGIN, { room: code, team: teamIdx, pin: String(pin).trim(), mode });
-    startPlaying(r, teamIdx);
   }
 
   // ---------------- playing ----------------
   function startPlaying(r, teamIdx) {
     room = r; me = teamIdx;
-    if (roomInfoOff) roomInfoOff();
     show('play');
     subs.forEach((off) => off());
     subs = [
       room.on('info', (v) => { info = v; render(); }),
       room.on('state', (v) => { st = v; watchQuestion(); render(); }),
       room.onConnection((on) => { if (on) room.presence(`presence/${me}`, { at: Date.now() }).catch(() => {}); }),
+      room.on(`seats/${me}`, (v) => {
+        if (v && v.device === deviceId) return;
+        // the teacher freed this team or reset the teams
+        subs.forEach((off) => off()); subs = [];
+        qSubs.forEach((off) => off()); qSubs = []; qKey = '';
+        room.remove(`presence/${me}`).catch(() => {});
+        me = null; info = null; st = null; lastMain = '';
+        $('#l-room').value = (loginStore.get(LOGIN) || {}).room || '';
+        show('login');
+        $('#l-msg').textContent = 'Your teacher reset your team. Tap Join game to get a team again.';
+      }),
     ];
   }
   function watchQuestion() {
@@ -227,19 +239,25 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'ans') { e.preventDefault(); sendAnswer(); }
   });
-  $('#l-room').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); watchRoomForLogin(e.target.value); });
-  $('#l-go').addEventListener('click', () => tryLogin($('#l-room').value.trim(), $('#l-team').value === '' ? NaN : Number($('#l-team').value), $('#l-pin').value));
-  $('#t-logout').addEventListener('click', () => {
-    if (!confirm('Log out of this team?')) return;
+  $('#l-room').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
+  $('#l-room').addEventListener('keydown', (e) => { if (e.key === 'Enter') join($('#l-room').value); });
+  $('#l-go').addEventListener('click', () => join($('#l-room').value));
+  $('#t-logout').addEventListener('click', async () => {
+    if (!confirm('Leave this team? Another device can then take it.')) return;
+    const r = room; const i = me;
     loginStore.del(LOGIN);
+    try {
+      await r.transaction(`seats/${i}`, (v) => (v && v.device === deviceId ? null : undefined));
+      await r.remove(`presence/${i}`);
+    } catch (e) { /* ignore */ }
     location.href = location.pathname + (mode === 'local' ? '?mode=local' : '');
   });
 
   // ---------------- start ----------------
   (async function start() {
     if (mode === 'firebase' && !config) {
-      fatal(`<h1>🏈 Stats Football</h1><p>This page needs your team's login link from your teacher.</p>
-        <p class="hint">Teachers: set up team devices on the projector's Setup → Teams &amp; rules tab, then share each team's link.</p>`);
+      fatal(`<h1>🏈 Stats Football</h1><p>This page needs the join link from your teacher.</p>
+        <p class="hint">Teachers: set up team devices on the projector's Setup → Teams &amp; rules tab, then share the join link.</p>`);
       return;
     }
     try {
@@ -248,14 +266,15 @@
       fatal(`<h1>Can't connect</h1><p>${esc(err.message || err)}</p><p class="hint">Your network may be blocking the game. Tell your teacher.</p>`);
       return;
     }
+    // join link: team.html?room=ABCDE joins right away
     const pRoom = params.get('room');
     if (pRoom) {
       history.replaceState(null, '', location.pathname + (mode === 'local' ? '?mode=local' : ''));
-      tryLogin(pRoom.toUpperCase(), Number(params.get('team')) - 1, params.get('pin') || '', false);
+      join(pRoom, false);
       return;
     }
     const saved = loginStore.get(LOGIN);
-    if (saved && saved.mode === mode) { tryLogin(saved.room, saved.team, saved.pin, true); return; }
+    if (saved && saved.mode === mode && saved.room) { join(saved.room, true); return; }
     show('login');
   })();
 })();
