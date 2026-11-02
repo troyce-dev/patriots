@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stats Football</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- ================= SETUP ================= -->
+  <section id="setup" class="screen">
+    <header class="setup-head">
+      <h1>🏈 Stats Football</h1>
+      <p class="sub">Answer the stats question → call a play → first helmet into the end zone wins.</p>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="stats">1 · This week's game</button>
+      <button class="tab" data-tab="questions">2 · Questions</button>
+      <button class="tab" data-tab="teams">3 · Teams &amp; rules</button>
+    </nav>
+
+    <div class="tabpane active" id="tab-stats">
+      <div class="row gap">
+        <label>Our team <input id="s-us" type="text"></label>
+        <label>Opponent <input id="s-opp" type="text"></label>
+        <label>Game date <input id="s-date" type="date"></label>
+        <span class="grow"></span>
+        <button id="btn-sample" class="ghost">Load sample numbers</button>
+        <button id="btn-clear" class="ghost">Clear all</button>
+      </div>
+      <p class="hint" id="sample-note"></p>
+
+      <div class="import-card">
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Drop or paste the box score here">
+          <div class="dz-big">📋 Drag &amp; drop the box score here</div>
+          <div class="dz-small">On ESPN, NFL.com or Pro-Football-Reference, open the game's <b>Box Score</b> (and <b>Team Stats</b>),
+            highlight the stats and drag them onto this box — or copy them (Ctrl+C / ⌘C), click here and paste (Ctrl+V / ⌘V).
+            You can also drop a saved web page (.html) or text file. Do it again for another page and the numbers are combined.</div>
+        </div>
+        <div class="import-side">
+          <button id="btn-espn" class="primary">⚡ Get the latest game from ESPN</button>
+          <div class="hint">One click: fills in the last finished game automatically (needs internet).</div>
+        </div>
+      </div>
+      <div id="import-result" class="import-result hidden"></div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Score by quarter</h3>
+          <table class="stat-table" id="t-quarters"></table>
+          <h3>Team stats</h3>
+          <table class="stat-table" id="t-stats"></table>
+        </div>
+        <div class="card">
+          <h3>Our receivers</h3>
+          <table class="stat-table" id="t-receivers"></table>
+          <h3>Season</h3>
+          <label class="block"><span>Our points in <em>previous</em> games this season (comma separated)</span>
+            <input id="s-season" type="text" placeholder="e.g. 20, 13, 27, 17">
+          </label>
+          <label class="block"><span>Our kicker's season field-goal percentage</span>
+            <input id="s-kpct" type="number" min="0" max="100" step="0.1" placeholder="e.g. 84">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabpane" id="tab-questions">
+      <div class="row gap">
+        <label>Order
+          <select id="q-order">
+            <option value="easy">Warm-up → Challenge</option>
+            <option value="shuffle">Shuffle</option>
+            <option value="as-is">As listed</option>
+          </select>
+        </label>
+        <span class="grow"></span>
+        <button id="q-all" class="ghost">Select all</button>
+        <button id="q-none" class="ghost">Select none</button>
+        <button id="q-print" class="ghost">Print answer key</button>
+      </div>
+      <p class="hint">These are built from this week's numbers. Untick any you don't want. ★ warm-up · ★★ standard · ★★★ challenge</p>
+      <ol id="q-list" class="q-list"></ol>
+      <div class="card">
+        <h3>Your own questions</h3>
+        <p class="hint">One per line: <code>Question || Answer</code></p>
+        <textarea id="q-custom" rows="5" placeholder="Who led the team in tackles, and what percent of the team's tackles was that? || 9 of 52 → 17.3%"></textarea>
+      </div>
+    </div>
+
+    <div class="tabpane" id="tab-teams">
+      <div class="card">
+        <h3>Teams</h3>
+        <div id="team-edit" class="team-edit"></div>
+      </div>
+      <div class="card">
+        <h3>Rules</h3>
+        <div class="row gap wrap">
+          <label>Teams start at
+            <select id="r-start">
+              <option value="50">Midfield (quick game)</option>
+              <option value="35">Own 35 (standard)</option>
+              <option value="20">Own 20 (long game)</option>
+            </select>
+          </label>
+          <label>Answer timer
+            <select id="r-timer">
+              <option value="0">Off</option>
+              <option value="60">1 minute</option>
+              <option value="90">1½ minutes</option>
+              <option value="120">2 minutes</option>
+              <option value="180">3 minutes</option>
+            </select>
+          </label>
+          <label class="check"><input type="checkbox" id="r-sound"> Sound effects</label>
+        </div>
+        <ul class="rules">
+          <li><b>Pass</b> — boom or bust (incomplete, sack or interception possible; avg about +<span id="ev-pass"></span> yds).</li>
+          <li><b>Run</b> — steady and safe (avg about +<span id="ev-run"></span> yds).</li>
+          <li><b>Defense</b> — pick another team and push them back (avg about <span id="ev-def"></span> yds). Pushed into their own end zone = safety, back to the 5.</li>
+          <li>Every team that answers correctly gets a play. First team to score a touchdown wins.</li>
+        </ul>
+      </div>
+    </div>
+
+    <footer class="setup-foot">
+      <span id="setup-status" class="hint"></span>
+      <span class="grow"></span>
+      <button id="btn-resume" class="ghost hidden">Resume game in progress</button>
+      <button id="btn-start" class="primary">Kick off ▶</button>
+    </footer>
+  </section>
+
+  <!-- ================= GAME (projector) ================= -->
+  <section id="game" class="screen hidden">
+    <div class="topbar">
+      <div class="title"><span id="g-matchup"></span></div>
+      <div class="qcount" id="g-qcount"></div>
+      <div class="tools">
+        <button id="g-undo" class="ghost small" title="Undo last play">↶ Undo</button>
+        <button id="g-sound" class="ghost small" title="Sound on/off">🔊</button>
+        <button id="g-full" class="ghost small" title="Full screen">⛶</button>
+        <button id="g-setup" class="ghost small" title="Back to setup">⚙ Setup</button>
+      </div>
+    </div>
+
+    <div class="field-wrap">
+      <div class="field" id="field">
+        <div class="endzone left"><span>START</span></div>
+        <div class="turf" id="turf"></div>
+        <div class="endzone right"><span>END ZONE</span></div>
+        <div class="lanes" id="lanes"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel"></div>
+
+    <div class="overlay hidden" id="overlay"></div>
+  </section>
+
+  <div id="print-key" class="print-only"></div>
+
+  <script src="js/questions.js"></script>
+  <script src="js/importer.js"></script>
+  <script src="js/plays.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
