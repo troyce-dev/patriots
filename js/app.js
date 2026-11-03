@@ -1,4 +1,4 @@
-/* global FBQuestions, FBPlays, FBLive */
+/* global FBQuestions, FBPlays, FBLive, FBNFL */
 (function () {
   'use strict';
   const Q = FBQuestions;
@@ -9,18 +9,21 @@
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const KEY = 'statsFootball.v1';
 
-  const DEFAULT_TEAMS = [
-    { name: 'Team 1', color: '#c8102e', stripe: '#ffffff' },
-    { name: 'Team 2', color: '#0b3d91', stripe: '#c0c0c0' },
-    { name: 'Team 3', color: '#1b7f3b', stripe: '#ffd100' },
-    { name: 'Team 4', color: '#f2a900', stripe: '#111111' },
-    { name: 'Team 5', color: '#6a1b9a', stripe: '#ffffff' },
-  ];
+  // Five different NFL teams by default (colors and names only).
+  const DEFAULT_TEAMS = FBNFL.DEFAULT.map((a) => FBNFL.asTeam(a));
 
   let state = load() || {
     stats: clone(Q.SAMPLE), isSample: true, custom: '', disabled: {}, order: 'easy',
     teams: clone(DEFAULT_TEAMS), rules: { start: 35, timer: 0, sound: true }, game: null,
   };
+
+  // Older saves used "Team 1"…"Team 5": give those NFL teams.
+  (function migrateTeams() {
+    if (!state.teams) return;
+    state.teams.forEach((t, i) => {
+      if (!t.nfl && /^Team \d+$/.test(t.name || '')) Object.assign(t, FBNFL.asTeam(FBNFL.DEFAULT[i % FBNFL.DEFAULT.length]));
+    });
+  })();
 
   function load() {
     try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; }
@@ -29,6 +32,11 @@
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
     if (typeof livePublish === 'function') livePublish();
   }
+
+  // team color for name tags/buttons: light helmets (e.g. white) use their stripe color so white text stays readable
+  const lum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '')); if (!m) return 0; const n = parseInt(m[1], 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255; };
+  const tagColor = (t) => (t && lum(t.color) > 0.72 && t.stripe ? t.stripe : (t && t.color) || '#888');
 
   // =================== SOUND ===================
   let actx = null;
@@ -59,19 +67,21 @@
   };
 
   // =================== HELMET ===================
-  function helmetSVG(color, stripe, label) {
+  function helmetSVG(color, stripe, label, mask) {
+    const L = String(label || '');
+    const fs = L.length >= 3 ? 19 : L.length === 2 ? 24 : 26;
     return `<svg viewBox="0 0 120 92" class="helmet-svg" aria-hidden="true">
       <path d="M14 66 C2 46 8 18 36 8 C62 -1 92 8 101 32 L103 42 L80 44 L78 56 L92 58 L92 70 L66 72 C56 84 30 86 14 66 Z"
-        fill="${color}" stroke="#111" stroke-width="3"/>
-      <path d="M30 13 C55 3 86 10 97 30" fill="none" stroke="${stripe}" stroke-width="7" stroke-linecap="round"/>
+        fill="${esc(color)}" stroke="#111" stroke-width="3"/>
+      <path d="M30 13 C55 3 86 10 97 30" fill="none" stroke="${esc(stripe)}" stroke-width="7" stroke-linecap="round"/>
       <path d="M22 60 C30 74 48 78 60 72" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="3"/>
       <circle cx="54" cy="52" r="6" fill="#222"/>
-      <g stroke="#cfd3d6" stroke-width="5" fill="none" stroke-linecap="round">
+      <g stroke="${esc(mask || '#cfd3d6')}" stroke-width="5" fill="none" stroke-linecap="round">
         <path d="M80 44 L114 46"/><path d="M80 56 L114 58"/><path d="M76 70 L110 70"/>
         <path d="M114 44 L114 70"/><path d="M98 45 L98 70"/>
       </g>
-      <text x="36" y="44" font-size="26" font-weight="900" text-anchor="middle" fill="${stripe}" stroke="#111" stroke-width="1"
-        font-family="Arial Black, Arial, sans-serif">${esc(label)}</text>
+      <text x="${L.length >= 3 ? 38 : 36}" y="${L.length >= 3 ? 42 : 44}" font-size="${fs}" font-weight="900" text-anchor="middle" fill="${esc(stripe)}" stroke="#111" stroke-width="1"
+        font-family="Arial Black, Arial, sans-serif">${esc(L)}</text>
     </svg>`;
   }
   const initials = (name, i) => {
@@ -80,6 +90,7 @@
     if (/^team$/i.test(w[0]) && w[1]) return w[1].slice(0, 2).toUpperCase();
     return (w.length > 1 ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase();
   };
+  const teamHelmet = (t, i) => helmetSVG(t.color, t.stripe, t.abbr || initials(t.name, i), t.mask);
 
   // =================== SETUP SCREEN ===================
   function buildStatsForm() {
@@ -171,8 +182,11 @@
   }
 
   function renderTeamEdit() {
+    const opts = (sel) => `<option value="">Custom team</option>${FBNFL.NFL_TEAMS.map((n) =>
+      `<option value="${n.abbr}" ${n.abbr === sel ? 'selected' : ''}>${esc(n.city)} ${esc(n.name)}</option>`).join('')}`;
     $('#team-edit').innerHTML = state.teams.map((t, i) => `<div class="team-row">
-      <div class="mini-helmet">${helmetSVG(t.color, t.stripe, initials(t.name, i))}</div>
+      <div class="mini-helmet">${teamHelmet(t, i)}</div>
+      <label>NFL team <select data-nfl="${i}">${opts(t.nfl || '')}</select></label>
       <label>Name <input type="text" data-t="${i}" data-f="name" value="${esc(t.name)}"></label>
       <label>Helmet <input type="color" data-t="${i}" data-f="color" value="${esc(t.color)}"></label>
       <label>Stripe <input type="color" data-t="${i}" data-f="stripe" value="${esc(t.stripe)}"></label>
@@ -243,7 +257,17 @@
       state.teams[t][e.target.dataset.f] = e.target.value;
       save();
       const row = e.target.closest('.team-row');
-      $('.mini-helmet', row).innerHTML = helmetSVG(state.teams[t].color, state.teams[t].stripe, initials(state.teams[t].name, Number(t)));
+      $('.mini-helmet', row).innerHTML = teamHelmet(state.teams[t], Number(t));
+    });
+    $('#team-edit').addEventListener('change', (e) => {
+      const i = e.target.dataset.nfl;
+      if (i == null) return;
+      const team = state.teams[i];
+      if (e.target.value) Object.assign(team, FBNFL.asTeam(e.target.value));
+      else { delete team.nfl; delete team.abbr; delete team.mask; }
+      save();
+      renderTeamEdit();
+      if (typeof renderLiveCard === 'function') renderLiveCard();
     });
     $('#r-start').addEventListener('change', (e) => { state.rules.start = Number(e.target.value); save(); });
     $('#r-timer').addEventListener('change', (e) => { state.rules.timer = Number(e.target.value); save(); });
@@ -447,7 +471,7 @@
   // What the team devices see. The answer is only sent after it's revealed.
   function liveSnapshot() {
     const g = state.game;
-    const info = { teams: state.teams.map((t) => ({ name: t.name, color: t.color, stripe: t.stripe })),
+    const info = { teams: state.teams.map((t) => ({ name: t.name, color: t.color, stripe: t.stripe, mask: t.mask || null, abbr: t.abbr || null })),
       title: `${state.stats.us || ''}${state.stats.opponent ? ` vs ${state.stats.opponent}` : ''}` };
     if (!g) return { info, state: { phase: 'lobby' } };
     if (g.style === 'self') return { info, state: selfSnapshot(g) };
@@ -520,7 +544,7 @@
     const el = $('#answers-in');
     if (!el) return;
     const g = state.game;
-    el.innerHTML = `Answers in: ${g.teams.map((t, i) => `<span class="chip small ${live.answers[i] ? '' : 'dim'}" style="--c:${esc(t.color)}">${live.answers[i] ? '✔ ' : ''}${esc(t.name)}</span>`).join(' ')}`;
+    el.innerHTML = `Answers in: ${g.teams.map((t, i) => `<span class="chip small ${live.answers[i] ? '' : 'dim'}" style="--c:${esc(tagColor(t))}">${live.answers[i] ? '✔ ' : ''}${esc(t.name)}</span>`).join(' ')}`;
   }
 
   // On reveal: copy each team's typed answer into the game and auto-mark it.
@@ -573,7 +597,7 @@
     $('#join-link').href = joinLink();
     $('#join-link').textContent = joinLink().replace(/^https?:\/\//, '');
     $('#logins').innerHTML = '<tr><th>Team</th><th>Device</th><th></th></tr>' +
-      state.teams.map((t, i) => `<tr data-i="${i}"><td><span class="chip small" style="--c:${esc(t.color)}">${esc(t.name)}</span></td>
+      state.teams.map((t, i) => `<tr data-i="${i}"><td><span class="chip small" style="--c:${esc(tagColor(t))}">${esc(t.name)}</span></td>
         <td class="on"></td><td><button class="ghost small hidden" data-free="${i}">Free this team</button></td></tr>`).join('');
     renderLiveDots();
   }
@@ -888,9 +912,9 @@
     $('#turf').innerHTML = lines;
     const g = state.game;
     $('#lanes').innerHTML = g.teams.map((t, i) => `<div class="lane" data-i="${i}">
-      <div class="lane-name" style="--c:${esc(t.color)}">${esc(t.name)}</div>
+      <div class="lane-name" style="--c:${esc(tagColor(t))}">${esc(t.name)}</div>
       <div class="helmet" id="h-${i}" style="left:${posToLeft(t.pos)}%">
-        ${helmetSVG(t.color, t.stripe, initials(t.name, i))}
+        ${teamHelmet(t, i)}
         <div class="spot" id="spot-${i}"></div>
         <div class="delta" id="delta-${i}"></div>
       </div></div>`).join('');
@@ -946,7 +970,7 @@
   // ---- panel (bottom half) ----
   function teamChip(i) {
     const t = state.game.teams[i];
-    return `<span class="chip" style="--c:${esc(t.color)}">${esc(t.name)}</span>`;
+    return `<span class="chip" style="--c:${esc(tagColor(t))}">${esc(t.name)}</span>`;
   }
 
   function renderPanel() {
@@ -972,7 +996,7 @@
           <div class="who">${g.typed ? 'Checked automatically — click a team to change it' : 'Who got it right?'} <small>(keys 1–5)</small></div>
           <div class="team-toggles ${g.typed ? 'typed' : ''}">${g.teams.map((t, i) => {
     const ty = g.typed && g.typed[i];
-    return `<button class="toggle ${g.correct[i] ? 'on' : ''}" data-act="toggle" data-i="${i}" style="--c:${esc(t.color)}">
+    return `<button class="toggle ${g.correct[i] ? 'on' : ''}" data-act="toggle" data-i="${i}" style="--c:${esc(tagColor(t))}">
             ${g.correct[i] ? '✔ ' : g.typed ? '✘ ' : ''}${esc(t.name)}${g.typed ? `<small class="typed-ans">${ty ? esc(ty.text) : '(no answer)'}${ty && ty.auto === null ? ' — you decide' : ''}</small>` : ''}</button>`;
   }).join('')}</div>
           <button class="primary big" data-act="plays">${g.correct.some(Boolean) ? 'Call the plays ▶' : 'Nobody — next question ▶'}</button>
@@ -985,7 +1009,7 @@
           ${liveOn() ? `<div class="hint big-hint">${live.online[ti] ? 'Choose on your device' : 'Team not connected'} — or pick for them here:</div>` : ''}
           <div class="calls">
             <button class="call pass" data-act="call" data-k="pass"><span>PASS</span><small>boom or bust</small></button>
-            <button class="call run" data-act="call" data-k="run"><span>RUN</span><small>steady</small></button>
+            <button class="call run" data-act="call" data-k="run"><span>RUN</span><small>never loses yards</small></button>
             <button class="call def" data-act="call" data-k="defense"><span>DEFENSE</span><small>push a team back</small></button>
           </div>
           <div class="upnext">${queueText()}</div>
@@ -994,7 +1018,7 @@
       const ti = g.queue[g.qpos];
       panel.innerHTML = `<div class="callbox">
           <div class="call-title">${teamChip(ti)} — which team does your defense go after?</div>
-          <div class="team-toggles big">${g.teams.map((t, i) => (i === ti ? '' : `<button class="toggle target" data-act="target" data-i="${i}" style="--c:${esc(t.color)}">
+          <div class="team-toggles big">${g.teams.map((t, i) => (i === ti ? '' : `<button class="toggle target" data-act="target" data-i="${i}" style="--c:${esc(tagColor(t))}">
             ${esc(t.name)}<small>${100 - t.pos} to go</small></button>`)).join('')}</div>
           <button class="ghost" data-act="back">← Change play</button>
         </div>`;
@@ -1139,7 +1163,7 @@
     }
     ov.innerHTML = `<div class="confetti">${confetti}</div>
       <div class="win-card">
-        <div class="win-helmet">${helmetSVG(t.color, t.stripe, initials(t.name, g.winner))}</div>
+        <div class="win-helmet">${teamHelmet(t, g.winner)}</div>
         <div class="win-td">TOUCHDOWN!</div>
         <div class="win-name">${esc(t.name)} wins!</div>
         <div class="win-sub">${g.style === 'self' ? `after ${g.ts[g.winner].right} correct answer${g.ts[g.winner].right === 1 ? '' : 's'}` : `after ${g.qi + 1} question${g.qi ? 's' : ''}`}</div>

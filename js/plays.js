@@ -9,13 +9,13 @@
   // Each outcome: weight (chance), yards [min, max], label, tone (good/bad/meh).
   // Run = steady, low risk. Pass = boom or bust. Defense = push another team back.
   const TABLES = {
+    // Run never loses yards: worst case is no gain.
     run: [
-      { w: 10, yds: [-3, -1], label: 'Stuffed at the line', tone: 'bad' },
+      { w: 12, yds: [0, 0], label: 'Stuffed — no gain', tone: 'meh' },
       { w: 28, yds: [1, 3], label: 'Short gain', tone: 'meh' },
       { w: 35, yds: [4, 7], label: 'Solid run', tone: 'good' },
       { w: 18, yds: [8, 14], label: 'Breaks a tackle!', tone: 'good' },
       { w: 7, yds: [15, 30], label: 'Breakaway run!', tone: 'great' },
-      { w: 2, yds: [-6, -4], label: 'FUMBLE! Lost yards', tone: 'bad' },
     ],
     pass: [
       { w: 30, yds: [0, 0], label: 'Incomplete', tone: 'meh' },

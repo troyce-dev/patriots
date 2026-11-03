@@ -249,3 +249,17 @@ console.log('team assignment tests passed');
   assert.strictEqual(g.teams[1].pos, 1, 'never past your own 1-yard line');
   console.log('sack tests passed');
 }
+
+// ---------- run never loses yards; NFL teams ----------
+{
+  for (let i = 0; i < 3000; i++) assert.ok(P.roll('run').yards >= 0, 'run never loses yards');
+  assert.ok(P.TABLES.run.every((o) => o.yds[0] >= 0));
+  require('../js/nfl.js');
+  const N = global.FBNFL;
+  assert.strictEqual(N.NFL_TEAMS.length, 32);
+  assert.strictEqual(new Set(N.NFL_TEAMS.map((t) => t.abbr)).size, 32);
+  assert.ok(N.NFL_TEAMS.every((t) => /^#[0-9a-f]{6}$/.test(t.shell) && /^#[0-9a-f]{6}$/.test(t.stripe) && /^#[0-9a-f]{6}$/.test(t.mask)));
+  assert.strictEqual(new Set(N.DEFAULT).size, 5);
+  assert.deepStrictEqual(N.asTeam('BUF'), { name: 'Bills', color: '#ffffff', stripe: '#c60c30', mask: '#00338d', abbr: 'BUF', nfl: 'BUF' });
+  console.log('run + NFL team tests passed');
+}
