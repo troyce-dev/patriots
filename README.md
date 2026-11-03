@@ -41,11 +41,17 @@ Deploy from a branch → `main`, `/ (root)`). It also works straight from the fi
 
 - Show the question → **Reveal answer** → click (or press 1–5) the teams that got it right → **Call the plays**.
 - Each correct team (the starting team rotates each question) picks **Pass** (boom or bust, about +7.7 yds on average),
-  **Run** (steady, about +5.7) or **Defense** (choose another team and push them back about 5.7 yds;
+  **Run** (steady, never loses yards, about +6.0) or **Defense** (choose another team and push them back about 5.7 yds;
   pushing a team into its own end zone is a safety and sends it back to the 5).
 - Keys: Space/Enter = main button, P/R/D = play call, Ctrl+Z = undo.
 - **Undo** takes back the last play. Click a helmet to move it by hand.
 - The game saves in the browser, so a refresh or going to Setup and back keeps your place.
+
+## Teams
+
+Each of the 5 teams is an NFL team: pick it from the **NFL team** list on **Setup → Teams & rules**. The helmet takes that
+team's colors and abbreviation (no logos), and the name fills in (you can still edit it). Choose **Custom team** to pick your own
+name and colors. The defaults are the Bills, Dolphins, Jets, Chiefs and Eagles.
 
 ## Team devices (each team logs in on its own Chromebook/phone)
 

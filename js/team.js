@@ -9,6 +9,11 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } },
     del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
   };
+  // team color for name tags/buttons: light helmets (e.g. white) use their stripe color so white text stays readable
+  const lum = (hex) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '')); if (!m) return 0; const n = parseInt(m[1], 16);
+    return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255; };
+  const tagColor = (t) => (t && lum(t.color) > 0.72 && t.stripe ? t.stripe : (t && t.color) || '#888');
+
   const LOGIN = 'statsFootball.team.login';
   const CFG = 'statsFootball.team.config';
 
@@ -38,13 +43,15 @@
   let qKey = '';
   let lastMain = '';
 
-  function helmetSVG(color, stripe, label) {
+  function helmetSVG(color, stripe, label, mask) {
+    const L = String(label || '');
+    const fs = L.length >= 3 ? 19 : L.length === 2 ? 24 : 26;
     return `<svg viewBox="0 0 120 92" class="helmet-svg" aria-hidden="true">
       <path d="M14 66 C2 46 8 18 36 8 C62 -1 92 8 101 32 L103 42 L80 44 L78 56 L92 58 L92 70 L66 72 C56 84 30 86 14 66 Z" fill="${esc(color)}" stroke="#111" stroke-width="3"/>
       <path d="M30 13 C55 3 86 10 97 30" fill="none" stroke="${esc(stripe)}" stroke-width="7" stroke-linecap="round"/>
       <circle cx="54" cy="52" r="6" fill="#222"/>
-      <g stroke="#cfd3d6" stroke-width="5" fill="none" stroke-linecap="round"><path d="M80 44 L114 46"/><path d="M80 56 L114 58"/><path d="M76 70 L110 70"/><path d="M114 44 L114 70"/><path d="M98 45 L98 70"/></g>
-      <text x="36" y="44" font-size="26" font-weight="900" text-anchor="middle" fill="${esc(stripe)}" stroke="#111" stroke-width="1" font-family="Arial Black, Arial, sans-serif">${esc(label)}</text>
+      <g stroke="${esc(mask || '#cfd3d6')}" stroke-width="5" fill="none" stroke-linecap="round"><path d="M80 44 L114 46"/><path d="M80 56 L114 58"/><path d="M76 70 L110 70"/><path d="M114 44 L114 70"/><path d="M98 45 L98 70"/></g>
+      <text x="${L.length >= 3 ? 38 : 36}" y="${L.length >= 3 ? 42 : 44}" font-size="${fs}" font-weight="900" text-anchor="middle" fill="${esc(stripe)}" stroke="#111" stroke-width="1" font-family="Arial Black, Arial, sans-serif">${esc(L)}</text>
     </svg>`;
   }
   const show = (id) => ['login', 'play', 'fatal'].forEach((x) => $(`#${x}`).classList.toggle('hidden', x !== id));
@@ -129,14 +136,14 @@
     if (picking) {
       const others = info.teams.map((t, i) => ({ t, i })).filter((x) => x.i !== me);
       return `${turn}<div class="t-big">Defense!</div><p class="t-center">Which team do you want to push back?</p>
-        <div class="t-targets">${others.map(({ t, i }) => `<button class="toggle" data-a="target" data-i="${i}" style="--c:${esc(t.color)}">
+        <div class="t-targets">${others.map(({ t, i }) => `<button class="toggle" data-a="target" data-i="${i}" style="--c:${esc(tagColor(t))}">
           <span>${esc(t.name)}</span><small>${100 - (st.pos || [])[i]} to go</small></button>`).join('')}</div>
         <button class="ghost wide" data-a="back" style="margin-top:.6rem">← Back</button>`;
     }
     return `${turn}<div class="t-big good">Call your play!</div>
       <div class="t-calls">
         <button class="call pass" data-a="call" data-k="pass"><span>PASS</span><small>boom or bust</small></button>
-        <button class="call run" data-a="call" data-k="run"><span>RUN</span><small>steady</small></button>
+        <button class="call run" data-a="call" data-k="run"><span>RUN</span><small>never loses yards</small></button>
         <button class="call def" data-a="call" data-k="defense"><span>DEFENSE</span><small>push a team back</small></button>
       </div>`;
   }
@@ -232,7 +239,7 @@
   function render() {
     if (me == null || !info) return;
     const t = info.teams[me] || { name: `Team ${me + 1}`, color: '#888', stripe: '#fff' };
-    $('#t-helmet').innerHTML = helmetSVG(t.color, t.stripe, String(me + 1));
+    $('#t-helmet').innerHTML = helmetSVG(t.color, t.stripe, t.abbr || String(me + 1), t.mask);
     $('#t-name').textContent = t.name;
     const pos = st && st.pos ? st.pos[me] : null;
     $('#t-yards').textContent = pos == null ? '' : pos >= 100 ? 'TOUCHDOWN!' : `${100 - pos} yards to go`;
@@ -248,7 +255,7 @@
     if (st && st.pos) {
       const order = info.teams.map((x, i) => ({ x, i, p: st.pos[i] })).sort((a, b) => b.p - a.p);
       $('#t-board').innerHTML = `<h3>The field</h3>${order.map(({ x, i, p }) => `<div class="t-row ${i === me ? 'me' : ''}">
-        <span>${esc(x.name)}</span><div class="bar" style="--c:${esc(x.color)}"><i style="width:${Math.min(100, p)}%"></i></div>
+        <span>${esc(x.name)}</span><div class="bar" style="--c:${esc(tagColor(x))}"><i style="width:${Math.min(100, p)}%"></i></div>
         <span class="yd">${p >= 100 ? 'TD' : `${100 - p} to go`}</span></div>`).join('')}`;
     } else $('#t-board').innerHTML = '';
   }
