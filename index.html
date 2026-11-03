@@ -145,6 +145,12 @@
       <div class="card">
         <h3>Rules</h3>
         <div class="row gap wrap">
+          <label>Game style
+            <select id="r-style">
+              <option value="together">Together — one question at a time on the projector</option>
+              <option value="self">Self-paced — each team answers at its own speed (team devices)</option>
+            </select>
+          </label>
           <label>Teams start at
             <select id="r-start">
               <option value="50">Midfield (quick game)</option>
@@ -161,6 +167,7 @@
               <option value="180">3 minutes</option>
             </select>
           </label>
+          <label class="check"><input type="checkbox" id="r-sack"> Wrong answer = sack (−5 yards)</label>
           <label class="check"><input type="checkbox" id="r-sound"> Sound effects</label>
         </div>
         <ul class="rules">
@@ -168,6 +175,9 @@
           <li><b>Run</b> — steady and safe (avg about +<span id="ev-run"></span> yds).</li>
           <li><b>Defense</b> — pick another team and push them back (avg about <span id="ev-def"></span> yds). Pushed into their own end zone = safety, back to the 5.</li>
           <li>Every team that answers correctly gets a play. First team to score a touchdown wins.</li>
+          <li id="rule-sack">A wrong answer is a sack: the team loses 5 yards (never past its own 1-yard line).</li>
+          <li id="rule-self">Self-paced: each team gets its own stream of questions on its device. The faster a team answers correctly, the more plays it gets.
+            The answer timer doesn’t apply.</li>
         </ul>
       </div>
     </div>

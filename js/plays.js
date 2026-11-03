@@ -75,6 +75,17 @@
     return entry;
   }
 
+  // Wrong answer: lose `yards` (never past your own 1-yard line).
+  function sack(game, teamIdx, yards = 5) {
+    const t = game.teams[teamIdx];
+    const from = t.pos;
+    const to = Math.max(1, from - yards);
+    t.pos = to;
+    const entry = { teamIdx, call: 'sack', targetIdx: null, label: 'SACKED!', tone: 'bad', yards: to - from, moverIdx: teamIdx, from, to, safety: false, td: false };
+    game.log.push(entry);
+    return entry;
+  }
+
   // "Own 35" style yard line from a 0–100 position.
   function yardLine(pos) {
     if (pos >= 100) return 'TOUCHDOWN';
@@ -82,5 +93,5 @@
     return pos < 50 ? `own ${pos}` : `opp ${100 - pos}`;
   }
 
-  return { TABLES, roll, expected, apply, yardLine, SAFETY_SPOT };
+  return { TABLES, roll, expected, apply, sack, yardLine, SAFETY_SPOT };
 });

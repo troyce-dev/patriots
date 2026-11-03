@@ -106,14 +106,68 @@
       }),
     ];
   }
+  const mySelf = () => (st && st.style === 'self' && st.self ? st.self[me] : null);
   function watchQuestion() {
-    const key = st && st.gameId ? `${st.gameId}/${st.qi}` : '';
+    const s = mySelf();
+    const key = !st || !st.gameId ? '' : s ? `self/${st.gameId}/${s.n}/${s.c}` : `${st.gameId}/${st.qi}`;
     if (key === qKey) return;
+    const sameQuestion = s && qKey.startsWith(`self/${st.gameId}/${s.n}/`);
     qSubs.forEach((off) => off()); qSubs = [];
-    qKey = key; myAnswer = null; myCall = null; editing = false; draft = ''; picking = false;
+    qKey = key; myAnswer = null; myCall = null; picking = false;
+    if (!sameQuestion) { editing = false; draft = ''; }
     if (!key) return;
+    if (s) {
+      qSubs.push(room.on(`answers/${st.gameId}/${me}/${s.n}`, (v) => { myAnswer = v; render(); }));
+      qSubs.push(room.on(`calls/${st.gameId}/${me}/${s.c}`, (v) => { myCall = v; if (!v) picking = false; render(); }));
+      return;
+    }
     qSubs.push(room.on(`answers/${key}/${me}`, (v) => { myAnswer = v; render(); }));
     qSubs.push(room.on(`calls/${key}/${me}`, (v) => { myCall = v; if (!v) picking = false; render(); }));
+  }
+
+  function playButtons(turn) {
+    if (picking) {
+      const others = info.teams.map((t, i) => ({ t, i })).filter((x) => x.i !== me);
+      return `${turn}<div class="t-big">Defense!</div><p class="t-center">Which team do you want to push back?</p>
+        <div class="t-targets">${others.map(({ t, i }) => `<button class="toggle" data-a="target" data-i="${i}" style="--c:${esc(t.color)}">
+          <span>${esc(t.name)}</span><small>${100 - (st.pos || [])[i]} to go</small></button>`).join('')}</div>
+        <button class="ghost wide" data-a="back" style="margin-top:.6rem">← Back</button>`;
+    }
+    return `${turn}<div class="t-big good">Call your play!</div>
+      <div class="t-calls">
+        <button class="call pass" data-a="call" data-k="pass"><span>PASS</span><small>boom or bust</small></button>
+        <button class="call run" data-a="call" data-k="run"><span>RUN</span><small>steady</small></button>
+        <button class="call def" data-a="call" data-k="defense"><span>DEFENSE</span><small>push a team back</small></button>
+      </div>`;
+  }
+
+  // ---- self-paced screens ----
+  function lastCard(l) {
+    if (!l) return '';
+    const yd = (p) => `${p.to - p.from >= 0 ? '+' : ''}${p.to - p.from} yards`;
+    let res;
+    if (l.correct) {
+      const p = l.play;
+      res = p ? `<div class="lc-play ${p.tone === 'bad' ? 'bad' : 'good'}">${callName(p.call)}${p.call === 'defense' ? ` on ${esc(teamName(p.targetIdx))}` : ''}: <b>${esc(p.label)}</b>
+        ${p.call === 'defense' ? (p.to === p.from ? '— no loss' : `— ${esc(teamName(p.moverIdx))} ${yd(p)}`) : p.td ? '— TOUCHDOWN!' : `— ${yd(p)}`}</div>` : '';
+    } else res = l.sack && l.sack.to !== l.sack.from ? `<div class="lc-play bad">Sacked! ${l.sack.to - l.sack.from} yards</div>` : '';
+    return `<div class="last-card ${l.correct ? 'ok' : 'no'}">
+      <div><b>Q${l.n}: ${l.correct ? '✔ Correct' : '✘ Wrong'}</b>${l.flipped ? ' <small>(checked by your teacher)</small>' : ''}</div>
+      <div class="lc-ans">You said “${esc(l.text)}” · Answer: ${esc(l.answer)}</div>${res}</div>`;
+  }
+  function selfHTML(s) {
+    const meta = s.q ? `<div class="t-meta">Question ${s.n + 1} of ${s.total} · <span class="lvl">${'★'.repeat(s.q.level || 1)}</span> ${esc(s.q.topic || '')}</div>` : '';
+    const score = `<div class="t-score">✔ ${s.right} &nbsp; ✘ ${s.wrong}</div>`;
+    if (s.status === 'call') {
+      if (myCall) return `${lastCard(s.last)}<div class="t-sent t-center">Play called: <b>${callName(myCall.call)}</b>${myCall.call === 'defense' ? ` on <b>${esc(teamName(myCall.target))}</b>` : ''}</div><p class="t-center">Watch the field…</p>`;
+      return `${lastCard(s.last)}${playButtons('')}`;
+    }
+    if (s.status === 'review') return `${score}<div class="t-big">Checking…</div><p class="t-center">Your teacher is checking your answer.</p>`;
+    if (s.status === 'done' || !s.q) return `${lastCard(s.last)}${score}<div class="t-big">All done!</div><p class="t-center">You answered every question. Watch the field!</p>`;
+    if (myAnswer && !editing) return `${score}${meta}<div class="t-q">${esc(s.q.q)}</div><div class="t-sent">Checking “${esc(myAnswer.text)}”…</div>`;
+    return `${lastCard(s.last)}${score}${meta}<div class="t-q">${esc(s.q.q)}</div><div class="t-answer-box">
+        <textarea id="ans" rows="2" placeholder="Type your answer (include both parts if asked)">${esc(draft)}</textarea>
+        <button class="primary big" data-a="send">Send answer ▶</button></div>`;
   }
 
   const teamName = (i) => (info && info.teams[i] ? info.teams[i].name : `Team ${i + 1}`);
@@ -130,6 +184,7 @@
       return st.winner === me ? '<div class="t-big good">🏆 TOUCHDOWN!</div><p class="t-center">Your team wins!</p>'
         : `<div class="t-big">Game over</div><p class="t-center"><b>${esc(teamName(st.winner))}</b> scored first.</p>`;
     }
+    if (st.style === 'self') return mySelf() ? selfHTML(mySelf()) : '<p class="t-center">Waiting…</p>';
     if (st.phase === 'done') return '<div class="t-big">Out of questions</div><p class="t-center">Watch the screen!</p>';
     if (st.phase === 'question') {
       if (myAnswer && !editing) {
@@ -145,7 +200,7 @@
     const ok = st.marks && st.marks[me];
     const inQueue = (st.queue || []).includes(me);
     let top = `${meta}${qText}<div class="t-key"><b>Answer:</b> ${esc(st.answer || '')}</div>
-      <div class="t-big ${ok ? 'good' : 'bad'}">${ok ? '✔ Correct!' : '✘ Not this time'}</div>
+      <div class="t-big ${ok ? 'good' : 'bad'}">${ok ? '✔ Correct!' : st.sackWrong ? '✘ Sacked! −5 yards' : '✘ Not this time'}</div>
       <p class="t-center hint">Your answer: ${myAnswer ? esc(myAnswer.text) : '(none sent)'}</p>`;
     if (st.phase === 'answer') {
       return top + (ok ? '<p class="t-center">Get ready to call your play…</p>' : '<p class="t-center">Watch the screen — you can still play defense later!</p>');
@@ -171,19 +226,7 @@
         <p class="t-center">${done ? 'Done — watch the screen!' : current === me ? 'Here it comes — watch the screen!' : 'Locked in. Wait for your turn…'}</p>`;
     }
     const turn = current === me && st.phase === 'call' ? '<div class="t-turn">It’s your turn!</div>' : '';
-    if (picking) {
-      const others = info.teams.map((t, i) => ({ t, i })).filter((x) => x.i !== me);
-      return `${turn}<div class="t-big">Defense!</div><p class="t-center">Which team do you want to push back?</p>
-        <div class="t-targets">${others.map(({ t, i }) => `<button class="toggle" data-a="target" data-i="${i}" style="--c:${esc(t.color)}">
-          <span>${esc(t.name)}</span><small>${100 - (st.pos || [])[i]} to go</small></button>`).join('')}</div>
-        <button class="ghost wide" data-a="back" style="margin-top:.6rem">← Back</button>`;
-    }
-    return `${turn}<div class="t-big good">Call your play!</div>
-      <div class="t-calls">
-        <button class="call pass" data-a="call" data-k="pass"><span>PASS</span><small>boom or bust</small></button>
-        <button class="call run" data-a="call" data-k="run"><span>RUN</span><small>steady</small></button>
-        <button class="call def" data-a="call" data-k="defense"><span>DEFENSE</span><small>push a team back</small></button>
-      </div>`;
+    return playButtons(turn);
   }
 
   function render() {
@@ -214,15 +257,19 @@
   async function sendAnswer() {
     const ta = $('#ans');
     const text = (ta ? ta.value : '').trim();
-    if (!text || !st || st.phase !== 'question') return;
+    const s = mySelf();
+    if (!text || !st || (s ? s.status !== 'answer' : st.phase !== 'question')) return;
     draft = text;
     editing = false;
-    await room.set(`answers/${st.gameId}/${st.qi}/${me}`, { text: text.slice(0, 200), at: Date.now() });
+    const path = s ? `answers/${st.gameId}/${me}/${s.n}` : `answers/${st.gameId}/${st.qi}/${me}`;
+    await room.set(path, { text: text.slice(0, 200), at: Date.now() });
   }
   async function sendCall(call, target) {
-    if (!st || !(st.queue || []).includes(me)) return;
+    const s = mySelf();
+    if (!st || (s ? s.status !== 'call' : !(st.queue || []).includes(me))) return;
     picking = false;
-    await room.set(`calls/${st.gameId}/${st.qi}/${me}`, target == null ? { call, at: Date.now() } : { call, target, at: Date.now() });
+    const path = s ? `calls/${st.gameId}/${me}/${s.c}` : `calls/${st.gameId}/${st.qi}/${me}`;
+    await room.set(path, target == null ? { call, at: Date.now() } : { call, target, at: Date.now() });
   }
 
   document.addEventListener('click', (e) => {
