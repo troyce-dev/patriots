@@ -238,3 +238,14 @@ assert.strictEqual(take('g'), -1, 'room full');
 assert.strictEqual(pick([{ device: 'a' }, null, { device: 'c' }], 'z', 5).index, 1);
 assert.strictEqual(pick([{ device: 'a' }, null, { device: 'c' }], 'c', 5).index, 2);
 console.log('team assignment tests passed');
+
+// ---------- wrong answer = sack ----------
+{
+  const g = { teams: [{ pos: 40 }, { pos: 3 }], log: [], winner: null };
+  const s1 = P.sack(g, 0, 5);
+  assert.strictEqual(g.teams[0].pos, 35);
+  assert.strictEqual(s1.yards, -5);
+  P.sack(g, 1, 5);
+  assert.strictEqual(g.teams[1].pos, 1, 'never past your own 1-yard line');
+  console.log('sack tests passed');
+}

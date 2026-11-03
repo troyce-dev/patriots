@@ -35,3 +35,10 @@
 .t-row .yd { text-align: right; color: var(--muted); font-size: .9rem; }
 .t-row.me { color: var(--accent); }
 .t-row span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.last-card { border-radius: 10px; padding: .55rem .8rem; margin-bottom: .8rem; border-left: 5px solid var(--good); background: rgba(46, 204, 113, .1); }
+.last-card.no { border-left-color: var(--bad); background: rgba(255, 77, 77, .1); }
+.lc-ans { color: var(--muted); font-size: .95rem; margin-top: .15rem; }
+.lc-play { margin-top: .3rem; font-size: 1.05rem; }
+.lc-play.good { color: #7dff9e; }
+.lc-play.bad { color: #ff7d7d; }
+.t-score { float: right; font-weight: 800; color: var(--muted); }

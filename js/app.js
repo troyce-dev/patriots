@@ -183,6 +183,10 @@
     $('#r-start').value = String(state.rules.start);
     $('#r-timer').value = String(state.rules.timer);
     $('#r-sound').checked = !!state.rules.sound;
+    $('#r-style').value = state.rules.style || 'together';
+    $('#r-sack').checked = state.rules.sack !== false;
+    $('#rule-sack').classList.toggle('hidden', state.rules.sack === false);
+    $('#rule-self').classList.toggle('hidden', state.rules.style !== 'self');
     $('#ev-pass').textContent = P.expected('pass').toFixed(1);
     $('#ev-run').textContent = P.expected('run').toFixed(1);
     $('#ev-def').textContent = P.expected('defense').toFixed(1);
@@ -244,6 +248,8 @@
     $('#r-start').addEventListener('change', (e) => { state.rules.start = Number(e.target.value); save(); });
     $('#r-timer').addEventListener('change', (e) => { state.rules.timer = Number(e.target.value); save(); });
     $('#r-sound').addEventListener('change', (e) => { state.rules.sound = e.target.checked; save(); });
+    $('#r-style').addEventListener('change', (e) => { state.rules.style = e.target.value; save(); renderRules(); });
+    $('#r-sack').addEventListener('change', (e) => { state.rules.sack = e.target.checked; save(); renderRules(); });
     $('#btn-start').addEventListener('click', () => {
       if (state.game && state.game.winner == null && !confirm('Start a new game? The game in progress will be lost.')) return;
       newGame();
@@ -392,7 +398,7 @@
 
   // =================== TEAM DEVICES (LIVE) ===================
   const RULES_JSON = JSON.stringify({ rules: { rooms: { $room: { '.read': 'auth != null', '.write': 'auth != null' } } } }, null, 2);
-  const live = { room: null, status: 'off', answers: {}, calls: {}, online: {}, seats: {}, subs: [], subKey: '', lastPub: '', pubTimer: null };
+  const live = { room: null, status: 'off', answers: {}, calls: {}, selfAnswers: {}, selfCalls: {}, online: {}, seats: {}, subs: [], subKey: '', lastPub: '', pubTimer: null };
   state.live = state.live || { mode: 'off', configText: '', code: FBLive.newRoomCode() };
   const L = () => state.live;
   const liveOn = () => L().mode !== 'off' && !!live.room;
@@ -444,6 +450,7 @@
     const info = { teams: state.teams.map((t) => ({ name: t.name, color: t.color, stripe: t.stripe })),
       title: `${state.stats.us || ''}${state.stats.opponent ? ` vs ${state.stats.opponent}` : ''}` };
     if (!g) return { info, state: { phase: 'lobby' } };
+    if (g.style === 'self') return { info, state: selfSnapshot(g) };
     const q = g.deck[g.qi];
     const st = {
       gameId: g.gameId, phase: g.phase === 'target' ? 'call' : g.phase, qi: g.qi, qcount: g.deck.length,
@@ -454,6 +461,7 @@
       pos: g.teams.map((t) => t.pos),
       last: g.last && (g.phase === 'result' || g.phase === 'over') ? g.last : null,
       winner: g.winner,
+      sackWrong: state.rules.sack !== false,
     };
     return { info, state: st };
   }
@@ -473,12 +481,18 @@
   // listen for this question's answers and play calls
   function liveSubscribe() {
     const g = state.game;
-    const key = g ? `${g.gameId}/${g.qi}` : '';
+    const key = g ? (g.style === 'self' ? `self/${g.gameId}` : `${g.gameId}/${g.qi}`) : '';
     if (!liveOn() || key === live.subKey) return;
     live.subs.splice(2).forEach((off) => off()); // keep presence + seats
     live.subKey = key;
-    live.answers = {}; live.calls = {};
+    live.answers = {}; live.calls = {}; live.selfAnswers = {}; live.selfCalls = {}; live.selfFor = null;
     if (!g) return;
+    if (g.style === 'self') {
+      live.selfFor = g.gameId;
+      live.subs.push(live.room.on(`answers/${g.gameId}`, (v) => { live.selfAnswers = v || {}; processSelf(); }));
+      live.subs.push(live.room.on(`calls/${g.gameId}`, (v) => { live.selfCalls = v || {}; processSelf(); }));
+      return;
+    }
     live.subs.push(live.room.on(`answers/${key}`, (v) => {
       live.answers = v || {};
       if (state.game && (state.game.phase === 'question') && !$('#game').classList.contains('hidden')) renderAnswerCount();
@@ -607,6 +621,203 @@
     liveConnect();
   }
 
+  // =================== SELF-PACED GAME ===================
+  // Each team works through its own stream of questions on its device.
+  // Devices write answers/{gameId}/{team}/{n} and calls/{gameId}/{team}/{c};
+  // the projector grades, moves helmets and publishes each team's next step.
+  const isSelf = () => !!(state.game && state.game.style === 'self');
+  const selfQ = (g, i, n) => g.deck[g.orders[i][n]];
+  const callLabel = (c) => ({ pass: 'PASS', run: 'RUN', defense: 'DEFENSE', sack: 'SACK' }[c] || c);
+  const playInfo = (e) => (e ? { call: e.call, targetIdx: e.targetIdx, label: e.label, tone: e.tone, from: e.from, to: e.to, moverIdx: e.moverIdx, td: e.td, safety: e.safety } : null);
+
+  function teamOrder(deck) {
+    const idx = deck.map((_, k) => k);
+    const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    if (state.order === 'as-is') return idx;
+    if (state.order === 'shuffle') return shuffle(idx);
+    // warm-ups first, but each team gets its own order inside each level (harder to copy answers)
+    return [1, 2, 3].flatMap((l) => shuffle(idx.filter((k) => deck[k].level === l)))
+      .concat(idx.filter((k) => ![1, 2, 3].includes(deck[k].level)));
+  }
+
+  function newSelfGame(deck) {
+    state.game = {
+      style: 'self', phase: 'self', gameId: `g${Date.now()}`,
+      teams: state.teams.map((t) => ({ ...t, pos: state.rules.start })),
+      deck, orders: state.teams.map(() => teamOrder(deck)),
+      ts: state.teams.map(() => ({ n: 0, c: 0, status: 'answer', right: 0, wrong: 0, plays: 0, last: null })),
+      feed: [], feedId: 0, log: [], winner: null, history: [],
+    };
+  }
+
+  function selfSnapshot(g) {
+    return {
+      style: 'self', gameId: g.gameId, phase: g.winner != null ? 'over' : 'self',
+      pos: g.teams.map((t) => t.pos), winner: g.winner,
+      self: g.ts.map((t, i) => {
+        const total = g.orders[i].length;
+        const q = t.status === 'answer' && t.n < total ? selfQ(g, i, t.n) : null;
+        return { n: t.n, c: t.c, total, status: t.n >= total && t.status === 'answer' ? 'done' : t.status,
+          right: t.right, wrong: t.wrong, q: q ? { q: q.q, topic: q.topic, level: q.level } : null, last: t.last };
+      }),
+    };
+  }
+
+  function selfFeedFor(g, i) { return g.feed.find((f) => f.i === i); }
+
+  function selfWrong(g, i, entry) {
+    const t = g.ts[i];
+    t.wrong += 1;
+    entry.result = 'wrong';
+    entry.sack = null;
+    if (state.rules.sack !== false) {
+      const e = P.sack(g, i, 5);
+      entry.sack = { from: e.from, to: e.to };
+      if (e.from !== e.to) flashDelta(i, e.to - e.from);
+    }
+    t.status = 'answer';
+    t.last = { n: entry.qn + 1, text: entry.text, correct: false, answer: entry.answer, sack: entry.sack };
+  }
+  function selfRight(g, i, entry) {
+    const t = g.ts[i];
+    t.right += 1;
+    entry.result = 'right';
+    t.status = 'call';
+    t.last = { n: entry.qn + 1, text: entry.text, correct: true, answer: entry.answer };
+  }
+
+  function selfGrade(g, i, text) {
+    const t = g.ts[i];
+    const q = selfQ(g, i, t.n);
+    const entry = { id: ++g.feedId, i, qn: t.n, q: q.q, text: String(text).slice(0, 200), answer: q.a, auto: Q.autoCheck(q.a, text), at: Date.now() };
+    t.n += 1;
+    g.feed.unshift(entry);
+    if (g.feed.length > 60) g.feed.pop();
+    if (entry.auto === true) selfRight(g, i, entry);
+    else if (entry.auto === false) { selfWrong(g, i, entry); sfx.bad(); }
+    else { entry.result = 'review'; t.status = 'review'; }
+  }
+
+  function selfPlay(g, i, cl) {
+    const t = g.ts[i];
+    let call = cl.call;
+    let target = null;
+    if (!['pass', 'run', 'defense'].includes(call)) call = 'run';
+    if (call === 'defense') {
+      target = Number(cl.target);
+      if (!Number.isInteger(target) || target === i || target < 0 || target >= g.teams.length) {
+        // no valid target: go after the leader
+        target = g.teams.map((x, k) => ({ k, p: x.pos })).filter((x) => x.k !== i).sort((a, b) => b.p - a.p)[0].k;
+      }
+    }
+    const e = P.apply(g, i, call, target);
+    t.c += 1;
+    t.plays += 1;
+    t.status = 'answer';
+    t.last = { ...(t.last || {}), play: playInfo(e) };
+    const f = selfFeedFor(g, i);
+    if (f && f.result === 'right' && !f.play) f.play = playInfo(e);
+    if (e.to !== e.from || e.call !== 'defense') flashDelta(e.moverIdx, e.to - e.from);
+    if (e.td) sfx.td(); else (e.tone === 'bad' ? sfx.bad : e.tone === 'meh' ? sfx.meh : sfx.good)();
+  }
+
+  // Run every pending answer and play call. Safe to call any time (idempotent).
+  function processSelf() {
+    const g = state.game;
+    if (!isSelf() || g.winner != null || live.selfFor !== g.gameId) return; // never grade with another game's answers
+    let changed = false;
+    g.ts.forEach((t, i) => {
+      for (let guard = 0; guard < 4 && g.winner == null; guard++) {
+        if (t.status === 'answer' && t.n < g.orders[i].length) {
+          const a = live.selfAnswers && live.selfAnswers[i] && live.selfAnswers[i][t.n];
+          if (a && String(a.text || '').trim()) { selfGrade(g, i, a.text); changed = true; continue; }
+        } else if (t.status === 'call') {
+          const cl = live.selfCalls && live.selfCalls[i] && live.selfCalls[i][t.c];
+          if (cl && cl.call) { selfPlay(g, i, cl); changed = true; continue; }
+        }
+        break;
+      }
+    });
+    if (!changed) return;
+    save();
+    if (!$('#game').classList.contains('hidden')) { renderHelmets(false); renderPanel(); }
+    if (g.winner != null) setTimeout(() => { if (state.game === g && g.phase !== 'over') showWinner(false); }, 1300);
+  }
+
+  // Teacher overrides from the feed.
+  function selfOverride(id, verdict) {
+    const g = state.game;
+    const f = g.feed.find((x) => x.id === id);
+    if (!f || g.winner != null) return;
+    const t = g.ts[f.i];
+    const latest = selfFeedFor(g, f.i) === f;
+    if (f.result === 'review' && t.status === 'review') {
+      if (verdict === 'right') selfRight(g, f.i, f); else selfWrong(g, f.i, f);
+    } else if (f.result === 'wrong' && verdict === 'right' && latest && !f.flipped) {
+      // give the yards back and a play for this answer
+      if (f.sack) {
+        const back = f.sack.from - f.sack.to;
+        g.teams[f.i].pos = Math.min(99, g.teams[f.i].pos + back);
+        if (back) flashDelta(f.i, back);
+      }
+      t.wrong -= 1;
+      f.flipped = true;
+      f.sack = null;
+      selfRight(g, f.i, f);
+      t.last.flipped = true;
+    } else if (f.result === 'right' && verdict === 'wrong' && latest && t.status === 'call' && !f.flipped) {
+      t.right -= 1;
+      f.flipped = true;
+      selfWrong(g, f.i, f);
+      t.last.flipped = true;
+    } else return;
+    save();
+    renderHelmets(false);
+    renderPanel();
+    processSelf(); // a waiting answer or call may now be runnable
+  }
+
+  function selfStatusText(g, i) {
+    const t = g.ts[i];
+    const total = g.orders[i].length;
+    if (g.winner === i) return '🏆 Touchdown!';
+    if (t.status === 'review') return '<b class="warn">Waiting for you to check</b>';
+    if (t.status === 'call') return 'Calling a play…';
+    if (t.n >= total) return 'Answered every question';
+    return `Working on Q${t.n + 1}`;
+  }
+
+  function renderSelfPanel() {
+    const g = state.game;
+    const panel = $('#panel');
+    $('#g-qcount').textContent = 'Self-paced · first to the end zone wins';
+    const rows = g.teams.map((tm, i) => {
+      const t = g.ts[i];
+      return `<tr><td>${teamChip(i)}</td><td class="num">${Math.min(t.n, g.orders[i].length)}/${g.orders[i].length}</td>
+        <td class="num good">${t.right}</td><td class="num bad">${t.wrong}</td><td class="num">${t.plays}</td><td>${selfStatusText(g, i)}</td></tr>`;
+    }).join('');
+    const feed = g.feed.slice(0, 14).map((f) => {
+      const t = g.ts[f.i];
+      const latest = selfFeedFor(g, f.i) === f;
+      let mark = f.result === 'right' ? '<span class="mk good">✔</span>' : f.result === 'wrong' ? '<span class="mk bad">✘</span>' : '<span class="mk warn">?</span>';
+      let what = '';
+      if (f.result === 'wrong') what = f.sack ? `Sacked ${f.sack.to - f.sack.from} yds` : 'No play';
+      if (f.result === 'right') what = f.play ? `${callLabel(f.play.call)}${f.play.call === 'defense' ? ` on ${esc(g.teams[f.play.targetIdx].name)}` : ''}: ${esc(f.play.label)} (${f.play.to - f.play.from >= 0 ? '+' : ''}${f.play.to - f.play.from})` : 'Calling a play…';
+      if (f.flipped) what += ' <i>(you changed this)</i>';
+      let btns = '';
+      if (f.result === 'review' && t.status === 'review') btns = `<button class="ghost small" data-ov-id="${f.id}" data-v="right">✔ Right</button><button class="ghost small" data-ov-id="${f.id}" data-v="wrong">✘ Wrong</button>`;
+      else if (f.result === 'wrong' && latest && !f.flipped && g.winner == null) btns = `<button class="ghost small" data-ov-id="${f.id}" data-v="right">Mark right</button>`;
+      else if (f.result === 'right' && latest && t.status === 'call' && !f.flipped && g.winner == null) btns = `<button class="ghost small" data-ov-id="${f.id}" data-v="wrong">Mark wrong</button>`;
+      return `<li class="${f.result}">${mark} ${teamChip(f.i)} <b>Q${f.qn + 1}</b> “${esc(f.text)}”
+        <span class="fd-key">key: ${esc(f.answer)}</span> <span class="fd-what">${what}</span> <span class="fd-btns">${btns}</span></li>`;
+    }).join('') || '<li class="hint">Answers will show up here as teams send them.</li>';
+    panel.innerHTML = `<div class="self-wrap">
+        <div class="self-teams"><table class="self-table"><tr><th>Team</th><th>Q</th><th>✔</th><th>✘</th><th>Plays</th><th></th></tr>${rows}</table>
+          ${g.winner != null ? '<button class="primary big" data-act="celebrate">🏆 Winner!</button>' : ''}</div>
+        <div class="self-feed"><div class="hint">Latest answers — click to change a mark</div><ul>${feed}</ul></div>
+      </div>`;
+  }
+
   // =================== GAME ===================
   function buildDeck() {
     let qs = allQuestions().filter((q) => !state.disabled[q.id]);
@@ -622,6 +833,17 @@
   function newGame() {
     const deck = buildDeck();
     if (!deck.length) { alert('There are no questions selected. Enter stats or add your own questions first.'); return; }
+    if (state.rules.style === 'self') {
+      if (!liveOn()) {
+        alert('Self-paced games need team devices. On Setup → Teams & rules, choose "Each team on its own device" (or "Practice on this computer") first.');
+        return;
+      }
+      newSelfGame(deck);
+      save();
+      showGame();
+      sfx.whistle();
+      return;
+    }
     state.game = {
       teams: state.teams.map((t) => ({ ...t, pos: state.rules.start })),
       deck, qi: 0, phase: 'question', correct: state.teams.map(() => false), queue: [], qpos: 0,
@@ -643,8 +865,10 @@
     renderHelmets(true);
     renderPanel();
     renderLiveDots();
+    $('#g-undo').classList.toggle('hidden', isSelf());
     livePublish(true);
     if (state.game.winner != null) showWinner(false);
+    else if (isSelf()) processSelf();
     else checkPendingCall();
   }
 
@@ -726,10 +950,11 @@
   }
 
   function renderPanel() {
+    if (isSelf() && state.game.phase !== 'over') { renderSelfPanel(); return; }
     const g = state.game;
     const panel = $('#panel');
     const q = g.deck[g.qi];
-    $('#g-qcount').textContent = q ? `Question ${g.qi + 1} of ${g.deck.length}` : 'Out of questions';
+    $('#g-qcount').textContent = isSelf() ? 'Self-paced · game over' : q ? `Question ${g.qi + 1} of ${g.deck.length}` : 'Out of questions';
     const qBlock = q ? `<div class="qmeta"><span class="lvl">${'★'.repeat(q.level)}</span> ${esc(q.topic)}</div><div class="qtext">${esc(q.q)}</div>` : '';
 
     if (g.phase === 'question') {
@@ -751,6 +976,7 @@
             ${g.correct[i] ? '✔ ' : g.typed ? '✘ ' : ''}${esc(t.name)}${g.typed ? `<small class="typed-ans">${ty ? esc(ty.text) : '(no answer)'}${ty && ty.auto === null ? ' — you decide' : ''}</small>` : ''}</button>`;
   }).join('')}</div>
           <button class="primary big" data-act="plays">${g.correct.some(Boolean) ? 'Call the plays ▶' : 'Nobody — next question ▶'}</button>
+          ${state.rules.sack !== false && g.correct.some((c) => !c) ? '<div class="hint">Teams not marked ✔ are sacked −5 yards.</div>' : ''}
         </div>`;
     } else if (g.phase === 'call') {
       const ti = g.queue[g.qpos];
@@ -829,10 +1055,24 @@
   function act(a, el) {
     const g = state.game;
     if (!g) return;
+    if (isSelf() && !['celebrate', 'newgame'].includes(a)) return;
     if (a === 'reveal' && g.phase === 'question') { if (liveOn()) liveMarkAnswers(); g.phase = 'answer'; save(); renderPanel(); }
     else if (a === 'toggle' && g.phase === 'answer') {
       const i = Number(el.dataset.i); g.correct[i] = !g.correct[i]; save(); renderPanel();
     } else if (a === 'plays' && g.phase === 'answer') {
+      // wrong answers are sacked (undo goes back to marking)
+      if (state.rules.sack !== false && g.correct.some((c) => !c)) {
+        const snap = clone({ ...g, history: undefined });
+        snap.phase = 'answer';
+        g.history.push(snap);
+        g.correct.forEach((c, i) => {
+          if (c) return;
+          const e = P.sack(g, i, 5);
+          if (e.from !== e.to) flashDelta(i, e.to - e.from);
+        });
+        renderHelmets(false);
+        sfx.bad();
+      }
       // rotate who goes first each question so it's fair
       const n = g.teams.length;
       g.queue = [];
@@ -902,7 +1142,7 @@
         <div class="win-helmet">${helmetSVG(t.color, t.stripe, initials(t.name, g.winner))}</div>
         <div class="win-td">TOUCHDOWN!</div>
         <div class="win-name">${esc(t.name)} wins!</div>
-        <div class="win-sub">after ${g.qi + 1} question${g.qi ? 's' : ''}</div>
+        <div class="win-sub">${g.style === 'self' ? `after ${g.ts[g.winner].right} correct answer${g.ts[g.winner].right === 1 ? '' : 's'}` : `after ${g.qi + 1} question${g.qi ? 's' : ''}`}</div>
         <div class="row gap center">
           <button class="ghost" data-ov="close">View field</button>
           <button class="primary" data-ov="new">New game</button>
@@ -914,7 +1154,7 @@
 
   function undo() {
     const g = state.game;
-    if (!g || !g.history.length) return;
+    if (!g || isSelf() || !g.history.length) return;
     if (g.phase === 'rolling') return;
     const snap = g.history.pop();
     snap.history = g.history;
@@ -934,6 +1174,8 @@
 
   function initGame() {
     $('#panel').addEventListener('click', (e) => {
+      const o = e.target.closest('[data-ov-id]');
+      if (o) { selfOverride(Number(o.dataset.ovId), o.dataset.v); return; }
       const b = e.target.closest('[data-act]');
       if (b) act(b.dataset.act, b);
     });
@@ -993,7 +1235,9 @@
     const have = new Set(g.deck.map((q) => q.id + q.q));
     const extra = allQuestions().filter((q) => !state.disabled[q.id] && !have.has(q.id + q.q));
     if (extra.length) {
+      const start = g.deck.length;
       g.deck = g.deck.concat(extra);
+      if (g.orders) g.orders = g.orders.map((o) => o.concat(extra.map((_, k) => start + k)));
       if (g.phase === 'done') { g.phase = 'question'; g.correct = g.teams.map(() => false); }
       save();
     }

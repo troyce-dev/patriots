@@ -69,6 +69,21 @@ During the game:
    on their own device. When it's their turn the play runs on the projector by itself. You can still pick for a team
    that isn't connected. **Undo** lets that team pick again.
 
+### Self-paced games (each team at its own speed)
+
+On **Setup → Teams & rules → Rules**, set **Game style** to **Self-paced** (team devices must be on).
+
+- Each team gets its own stream of questions on its device. Warm-ups come first, but every team gets a different order,
+  so teams can't copy each other.
+- A correct answer gives the team a play right away (Pass / Run / Defense). A wrong answer is a sack: −5 yards.
+  The faster a team answers correctly, the more plays it gets. The first touchdown wins.
+- The projector shows the field moving live, a table of each team's progress (question, ✔, ✘, plays), and a feed of every
+  answer with the answer key. Click **Mark right** or **Mark wrong** on a team's latest answer to change it; Mark right gives the 5 yards back
+  plus a play. Answers the game can't check (your own questions with no number) wait for you to click ✔ or ✘.
+
+**Wrong answer = sack** (on by default) works in both styles. In the Together style, every team not marked ✔ loses 5 yards when you
+click **Call the plays** (Undo takes it back). A sack never goes past a team's own 1-yard line.
+
 The firewall must allow `gstatic.com` and `firebaseio.com` (Google services) on student devices.
 
 ### Firebase setup (once)
