@@ -289,3 +289,5 @@ details summary { cursor: pointer; color: var(--accent); font-weight: 700; margi
 .fd-key { color: var(--muted); font-size: .85em; }
 .fd-what { font-weight: 700; }
 .fd-btns button { margin-left: .3rem; }
+.feed-head { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }
+.feed-head .hint { flex: 1; }

@@ -147,8 +147,8 @@
         <div class="row gap wrap">
           <label>Game style
             <select id="r-style">
+              <option value="self">Self-paced race — each team answers on its own device at its own speed</option>
               <option value="together">Together — one question at a time on the projector</option>
-              <option value="self">Self-paced — each team answers at its own speed (team devices)</option>
             </select>
           </label>
           <label>Teams start at
@@ -156,15 +156,6 @@
               <option value="50">Midfield (quick game)</option>
               <option value="35">Own 35 (standard)</option>
               <option value="20">Own 20 (long game)</option>
-            </select>
-          </label>
-          <label>Answer timer
-            <select id="r-timer">
-              <option value="0">Off</option>
-              <option value="60">1 minute</option>
-              <option value="90">1½ minutes</option>
-              <option value="120">2 minutes</option>
-              <option value="180">3 minutes</option>
             </select>
           </label>
           <label class="check"><input type="checkbox" id="r-sack"> Wrong answer = sack (−5 yards)</label>
@@ -177,7 +168,7 @@
           <li>Every team that answers correctly gets a play. First team to score a touchdown wins.</li>
           <li id="rule-sack">A wrong answer is a sack: the team loses 5 yards (never past its own 1-yard line).</li>
           <li id="rule-self">Self-paced: each team gets its own stream of questions on its device. The faster a team answers correctly, the more plays it gets.
-            The answer timer doesn’t apply.</li>
+            Questions appear only on the team devices; the projector shows the field.</li>
         </ul>
       </div>
     </div>
