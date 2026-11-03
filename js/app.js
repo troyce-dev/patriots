@@ -14,8 +14,16 @@
 
   let state = load() || {
     stats: clone(Q.SAMPLE), isSample: true, custom: '', disabled: {}, order: 'easy',
-    teams: clone(DEFAULT_TEAMS), rules: { start: 35, timer: 0, sound: true }, game: null,
+    teams: clone(DEFAULT_TEAMS), rules: { start: 35, timer: 0, sound: true, style: 'self', v: 2 }, game: null,
   };
+
+  // Self-paced race is the main way to play now: switch older saves over once, and drop the timer.
+  if (state.rules && state.rules.v !== 2) {
+    state.rules.style = 'self';
+    state.rules.timer = 0;
+    state.rules.v = 2;
+  }
+  if (state.rules) state.rules.timer = 0;
 
   // Older saves used "Team 1"…"Team 5": give those NFL teams.
   (function migrateTeams() {
@@ -195,9 +203,8 @@
 
   function renderRules() {
     $('#r-start').value = String(state.rules.start);
-    $('#r-timer').value = String(state.rules.timer);
     $('#r-sound').checked = !!state.rules.sound;
-    $('#r-style').value = state.rules.style || 'together';
+    $('#r-style').value = state.rules.style || 'self';
     $('#r-sack').checked = state.rules.sack !== false;
     $('#rule-sack').classList.toggle('hidden', state.rules.sack === false);
     $('#rule-self').classList.toggle('hidden', state.rules.style !== 'self');
@@ -270,7 +277,6 @@
       if (typeof renderLiveCard === 'function') renderLiveCard();
     });
     $('#r-start').addEventListener('change', (e) => { state.rules.start = Number(e.target.value); save(); });
-    $('#r-timer').addEventListener('change', (e) => { state.rules.timer = Number(e.target.value); save(); });
     $('#r-sound').addEventListener('change', (e) => { state.rules.sound = e.target.checked; save(); });
     $('#r-style').addEventListener('change', (e) => { state.rules.style = e.target.value; save(); renderRules(); });
     $('#r-sack').addEventListener('change', (e) => { state.rules.sack = e.target.checked; save(); renderRules(); });
@@ -820,6 +826,8 @@
       return `<tr><td>${teamChip(i)}</td><td class="num">${Math.min(t.n, g.orders[i].length)}/${g.orders[i].length}</td>
         <td class="num good">${t.right}</td><td class="num bad">${t.wrong}</td><td class="num">${t.plays}</td><td>${selfStatusText(g, i)}</td></tr>`;
     }).join('');
+    const showKeys = !!live.showKeys;
+    const waiting = g.ts.filter((t) => t.status === 'review').length;
     const feed = g.feed.slice(0, 14).map((f) => {
       const t = g.ts[f.i];
       const latest = selfFeedFor(g, f.i) === f;
@@ -832,13 +840,18 @@
       if (f.result === 'review' && t.status === 'review') btns = `<button class="ghost small" data-ov-id="${f.id}" data-v="right">✔ Right</button><button class="ghost small" data-ov-id="${f.id}" data-v="wrong">✘ Wrong</button>`;
       else if (f.result === 'wrong' && latest && !f.flipped && g.winner == null) btns = `<button class="ghost small" data-ov-id="${f.id}" data-v="right">Mark right</button>`;
       else if (f.result === 'right' && latest && t.status === 'call' && !f.flipped && g.winner == null) btns = `<button class="ghost small" data-ov-id="${f.id}" data-v="wrong">Mark wrong</button>`;
-      return `<li class="${f.result}">${mark} ${teamChip(f.i)} <b>Q${f.qn + 1}</b> “${esc(f.text)}”
-        <span class="fd-key">key: ${esc(f.answer)}</span> <span class="fd-what">${what}</span> <span class="fd-btns">${btns}</span></li>`;
+      // answers and keys stay hidden on the projector unless the teacher turns them on
+      const detail = showKeys ? `“${esc(f.text)}” <span class="fd-key">key: ${esc(f.answer)}</span> ` : '';
+      if (f.result === 'review' && !showKeys) { what = '<b class="warn">Needs your check</b>'; btns = ''; }
+      else if (!showKeys) btns = '';
+      return `<li class="${f.result}">${mark} ${teamChip(f.i)} <b>Q${f.qn + 1}</b> ${detail}<span class="fd-what">${what}</span> <span class="fd-btns">${btns}</span></li>`;
     }).join('') || '<li class="hint">Answers will show up here as teams send them.</li>';
     panel.innerHTML = `<div class="self-wrap">
         <div class="self-teams"><table class="self-table"><tr><th>Team</th><th>Q</th><th>✔</th><th>✘</th><th>Plays</th><th></th></tr>${rows}</table>
           ${g.winner != null ? '<button class="primary big" data-act="celebrate">🏆 Winner!</button>' : ''}</div>
-        <div class="self-feed"><div class="hint">Latest answers — click to change a mark</div><ul>${feed}</ul></div>
+        <div class="self-feed"><div class="feed-head"><span class="hint">Latest plays${showKeys ? ' — click to change a mark' : ''}</span>
+          ${waiting && !showKeys ? `<b class="warn">${waiting} answer${waiting > 1 ? 's' : ''} waiting for you</b>` : ''}
+          <button class="ghost small" data-act="keys">${showKeys ? '🙈 Hide answers' : '👁 Show answers (teacher)'}</button></div><ul>${feed}</ul></div>
       </div>`;
   }
 
@@ -857,9 +870,17 @@
   function newGame() {
     const deck = buildDeck();
     if (!deck.length) { alert('There are no questions selected. Enter stats or add your own questions first.'); return; }
-    if (state.rules.style === 'self') {
+    if (state.rules.style !== 'together') {
       if (!liveOn()) {
-        alert('Self-paced games need team devices. On Setup → Teams & rules, choose "Each team on its own device" (or "Practice on this computer") first.');
+        // team devices are required: turn them on and start once connected
+        if (L().mode === 'off') { L().mode = 'firebase'; save(); renderLiveCard(); }
+        const btn = $('#btn-start');
+        btn.disabled = true; btn.textContent = 'Connecting…';
+        liveConnect().then(() => {
+          btn.disabled = false; btn.textContent = 'Kick off ▶';
+          if (liveOn()) newGame();
+          else alert('Couldn’t connect the team devices. Check Setup → Teams & rules → Team devices, then try again.');
+        });
         return;
       }
       newSelfGame(deck);
@@ -1079,6 +1100,7 @@
   function act(a, el) {
     const g = state.game;
     if (!g) return;
+    if (a === 'keys') { live.showKeys = !live.showKeys; renderPanel(); return; }
     if (isSelf() && !['celebrate', 'newgame'].includes(a)) return;
     if (a === 'reveal' && g.phase === 'question') { if (liveOn()) liveMarkAnswers(); g.phase = 'answer'; save(); renderPanel(); }
     else if (a === 'toggle' && g.phase === 'answer') {

@@ -34,8 +34,8 @@ Deploy from a branch → `main`, `/ (root)`). It also works straight from the fi
 
    Each comes with the answer and worked solution. Untick any you don't want, add your own
    (`Question || Answer`, one per line), and **Print answer key**.
-3. **Teams & rules**: team names and helmet colors, where teams start (midfield / own 35 / own 20)
-   and an optional answer timer.
+3. **Teams & rules**: the NFL teams, the game style (self-paced race is the default) and where teams start
+   (midfield / own 35 / own 20).
 
 ## Running the game
 
@@ -75,19 +75,22 @@ During the game:
    on their own device. When it's their turn the play runs on the projector by itself. You can still pick for a team
    that isn't connected. **Undo** lets that team pick again.
 
-### Self-paced games (each team at its own speed)
+### Self-paced race (the default)
 
-On **Setup → Teams & rules → Rules**, set **Game style** to **Self-paced** (team devices must be on).
+This is the default **Game style**. Clicking **Kick off** turns on team devices if they aren't on already.
+Questions appear only on the team devices, never on the projector. There's no timer: it's a race, and one team can score
+before another has finished its first question.
 
 - Each team gets its own stream of questions on its device. Warm-ups come first, but every team gets a different order,
   so teams can't copy each other.
 - A correct answer gives the team a play right away (Pass / Run / Defense). A wrong answer is a sack: −5 yards.
   The faster a team answers correctly, the more plays it gets. The first touchdown wins.
-- The projector shows the field moving live, a table of each team's progress (question, ✔, ✘, plays), and a feed of every
-  answer with the answer key. Click **Mark right** or **Mark wrong** on a team's latest answer to change it; Mark right gives the 5 yards back
-  plus a play. Answers the game can't check (your own questions with no number) wait for you to click ✔ or ✘.
+- The projector shows the field moving live, a table of each team's progress (question, ✔, ✘, plays) and a feed of plays.
+  What teams typed and the answer keys stay hidden so nobody can copy from the screen. Click **Show answers (teacher)** to see them,
+  then **Mark right** or **Mark wrong** on a team's latest answer to change it; Mark right gives the 5 yards back plus a play.
+  Answers the game can't check (your own questions with no number) show **Needs your check** until you click ✔ or ✘.
 
-**Wrong answer = sack** (on by default) works in both styles. In the Together style, every team not marked ✔ loses 5 yards when you
+**Wrong answer = sack** (on by default) works in both styles. In the Together style (one question at a time on the projector), every team not marked ✔ loses 5 yards when you
 click **Call the plays** (Undo takes it back). A sack never goes past a team's own 1-yard line.
 
 The firewall must allow `gstatic.com` and `firebaseio.com` (Google services) on student devices.
